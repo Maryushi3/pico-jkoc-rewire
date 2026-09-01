@@ -2,5 +2,5 @@
   "raw_axis_mode": true,
   "axis_scale": 1.0,
   "invert_turntable": false,
-  "debounce_ms": 0
+  "debounce_ms": 5
 }
