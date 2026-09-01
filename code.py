@@ -37,8 +37,7 @@ CONFIG = {
     "raw_axis_mode": True,
     "axis_scale": 1.0,
     "invert_turntable": False,
-    "debounce_ms": 5,
-    "relative_mode": False
+    "debounce_ms": 5
 }
 
 try:
@@ -72,11 +71,6 @@ if DEBOUNCE_SEC == 0:
     print("Debounce disabled (0 ms) - membranes may chatter")
 else:
     print(f"Debounce: {_debounce_ms} ms")
-try:
-    RELATIVE_MODE = bool(CONFIG["relative_mode"])
-except Exception:
-    RELATIVE_MODE = False
-print(f"Turntable mode: {'relative delta' if RELATIVE_MODE else 'absolute'} (raw_axis={RAW_AXIS_MODE})")
 
 # -----------------------------------------------
 # Encoder Setup
@@ -85,35 +79,19 @@ print(f"Turntable mode: {'relative delta' if RELATIVE_MODE else 'absolute'} (raw
 # rotaryio does 4x decoding. JKOC 24 PPR -> ~96 counts/rev.
 # No divisor arg on RP2040 build - counts are raw quadrature edges.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
-_prev_raw_pos = _encoder.position * INVERT_TURNTABLE  # for relative delta
 
 def get_axis():
-    global _prev_raw_pos
     raw_pos = _encoder.position * INVERT_TURNTABLE
 
-    if RELATIVE_MODE:
-        # Signed delta -127..127, sent as two's complement &0xFF.
-        # Host expects Relative (boot.py) and adds delta to its position.
-        delta = raw_pos - _prev_raw_pos
-        _prev_raw_pos = raw_pos
-        if not RAW_AXIS_MODE:
-            delta = int(delta * AXIS_SCALE)
-        # Clamp to signed 8-bit range the descriptor advertises
-        if delta > 127:
-            delta = 127
-        elif delta < -127:
-            delta = -127
-        return delta & 0xFF
+    if RAW_AXIS_MODE:
+        # Zero precision loss, instant 8-bit wrap.
+        # This is ABSOLUTE 0-255: beatoraja diffs successive reads.
+        # e.g. 10 -> 15 means +5 steps, 255 -> 2 means +3 (wrap).
+        return raw_pos & 0xFF
     else:
-        if RAW_AXIS_MODE:
-            # Zero precision loss, instant 8-bit wrap.
-            # This is ABSOLUTE 0-255: beatoraja diffs successive reads.
-            # e.g. 10 -> 15 means +5 steps, 255 -> 2 means +3 (wrap).
-            return raw_pos & 0xFF
-        else:
-            # Scaled sensitivity mode - multiplies absolute before wrap.
-            # <1.0 = less sensitive, >1.0 = more sensitive.
-            return int(raw_pos * AXIS_SCALE) & 0xFF
+        # Scaled sensitivity mode - multiplies absolute before wrap.
+        # <1.0 = less sensitive, >1.0 = more sensitive.
+        return int(raw_pos * AXIS_SCALE) & 0xFF
 
 # -----------------------------------------------
 # Buttons Setup + Per-Button Debounce
