@@ -24,7 +24,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 | Start | white | `GP9` | |
 | Select | light blue | `GP10` | |
 | Ground (common) | black + gray | `GND` | both to any `GND`, buttons short to this when pressed |
-| VCC | green | **NC** | unused - interrupter powered via `250Ω` to `5V` (see Warning below) |
+| VCC | green | **NC** | unused - leave floating, Pico VCC unchanged |
 
 > **Warning `code.py:4`:** JKOC interrupter is 5V stock. `250Ω` on LED power does **not** protect the phototransistor output - high can be ~5V. RP2040 max is 3.63V (not 5V tolerant). Use divider (`10k/15k` to 3.3V) or power from `3V3` after measuring, not direct 5V to `GP0/GP1`.
 
