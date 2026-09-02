@@ -12,19 +12,19 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 
 ## Wiring (hand-rewired JKOC -> Pico)
 
-| Function | JKOC wire | Pico | Note `code.py:4` |
-|---|---|---|---|
-| Key 1 (white) | red | `GP2` | |
-| Key 2 (black) | yellow | `GP3` | |
-| Key 3 (white) | dark blue | `GP4` | |
-| Key 4 (black) | purple | `GP5` | |
-| Key 5 (white) | pink | `GP6` | |
-| Key 6 (black) | orange | `GP7` | |
-| Key 7 (white) | brown | `GP8` | |
-| Start | white | `GP9` | |
-| Select | light blue | `GP10` | |
-| Ground (common) | black + gray | `GND` | both to any `GND`, buttons short to this when pressed |
-| VCC | green | **NC** | unused - leave floating, Pico VCC unchanged |
+| Function | JKOC wire | Pico |
+|---|---|---|
+| Key 1 (white) | red | `GP2` |
+| Key 2 (black) | yellow | `GP3` |
+| Key 3 (white) | dark blue | `GP4` |
+| Key 4 (black) | purple | `GP5` |
+| Key 5 (white) | pink | `GP6` |
+| Key 6 (black) | orange | `GP7` |
+| Key 7 (white) | brown | `GP8` |
+| Start | white | `GP9` |
+| Select | light blue | `GP10` |
+| Ground (common) | black + gray | `GND` |
+| VCC | green | **NC** |
 
 > **Warning `code.py:4`:** JKOC interrupter is 5V stock. `250Ω` on LED power does **not** protect the phototransistor output - high can be ~5V. RP2040 max is 3.63V (not 5V tolerant). Use divider (`10k/15k` to 3.3V) or power from `3V3` after measuring, not direct 5V to `GP0/GP1`.
 
