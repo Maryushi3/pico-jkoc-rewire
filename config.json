@@ -3,6 +3,7 @@
   "axis_scale": 1.0,
   "invert_turntable": false,
   "debounce_ms": 5,
+  "speedy_math": false,
   "digital_scratch": false,
   "digital_scratch_suppress_analog": false,
   "digital_scratch_timeout_ms": 80

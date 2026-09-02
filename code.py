@@ -38,6 +38,7 @@ CONFIG = {
     "axis_scale": 1.0,
     "invert_turntable": False,
     "debounce_ms": 5,
+    "speedy_math": False,
     "digital_scratch": False,
     "digital_scratch_suppress_analog": False,
     "digital_scratch_timeout_ms": 80
@@ -75,6 +76,11 @@ if DEBOUNCE_SEC == 0:
 else:
     print(f"Debounce: {_debounce_ms} ms")
 try:
+    SPEEDY_MATH = bool(CONFIG["speedy_math"])
+except Exception:
+    SPEEDY_MATH = False
+print(f"Speedy math (per-rev 200->256): {SPEEDY_MATH}")
+try:
     DIGITAL_SCRATCH = bool(CONFIG["digital_scratch"])
 except Exception:
     DIGITAL_SCRATCH = False
@@ -101,13 +107,17 @@ else:
 # pocket-iidx uses 24 PPR ->96 Pulses. No divisor arg on RP2040 build.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
-# per-rev correct: 1 rev = 255 steps -> 256/200 =1.28 steps per tick
+# per-rev speedy math: 50 holes ->200 Pulses, 1 rev =256 steps ->1.28/tick (optional)
 ENC_PULSE = 200
 PER_REV_SCALE = 256.0 / ENC_PULSE  # 1.28 for 50 holes
 
 # Smoothing state for scaled mode only (raw_axis_mode false)
-# Scaled mode is now per-rev correct (cur/200*256) with smoothing to hit every 1/255.
-_disp_pos = float(_encoder.position * INVERT_TURNTABLE * (PER_REV_SCALE * AXIS_SCALE if not RAW_AXIS_MODE else 1.0))
+# When speedy_math true -> per-rev correct cur/200*256 with smoothing; else raw*scale 1:1
+if not RAW_AXIS_MODE and SPEEDY_MATH:
+    _disp_init_scale = PER_REV_SCALE * AXIS_SCALE
+else:
+    _disp_init_scale = AXIS_SCALE if not RAW_AXIS_MODE else 1.0
+_disp_pos = float(_encoder.position * INVERT_TURNTABLE * _disp_init_scale)
 
 def get_axis(now=None):
     global _disp_pos
@@ -120,10 +130,12 @@ def get_axis(now=None):
         # Zero precision loss, instant 8-bit wrap - no smoothing
         return raw_pos & 0xFF
     else:
-        # Scaled mode is per-rev correct: 200 Pulses -> 256 steps.
-        # Continuous spin emits every intermediate tick at 1kHz (~1ms/step).
-        # Tail after stop is diff ms (at most a few ms), no jump.
-        target = float(raw_pos * PER_REV_SCALE * AXIS_SCALE)
+        # Scaled mode: with speedy_math -> per-rev correct 200->256; without -> classic 1:1 raw*scale
+        # Continuous spin emits every intermediate tick at 1kHz (~1ms/step) when scale>1.
+        if SPEEDY_MATH:
+            target = float(raw_pos * PER_REV_SCALE * AXIS_SCALE)
+        else:
+            target = float(raw_pos * AXIS_SCALE)
         diff = target - _disp_pos
         if abs(diff) < 0.5:
             _disp_pos = target
