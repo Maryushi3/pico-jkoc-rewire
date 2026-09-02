@@ -39,6 +39,7 @@ CONFIG = {
     "invert_turntable": False,
     "debounce_ms": 5,
     "speedy_math": False,
+    "scratch_smoothing": True,
     "digital_scratch": False,
     "digital_scratch_suppress_analog": False,
     "digital_scratch_timeout_ms": 80
@@ -81,6 +82,11 @@ except Exception:
     SPEEDY_MATH = False
 print(f"Speedy math (per-rev 200->256): {SPEEDY_MATH}")
 try:
+    SCRATCH_SMOOTHING = bool(CONFIG["scratch_smoothing"])
+except Exception:
+    SCRATCH_SMOOTHING = True
+print(f"Scratch smoothing (1 step/ms): {SCRATCH_SMOOTHING}")
+try:
     DIGITAL_SCRATCH = bool(CONFIG["digital_scratch"])
 except Exception:
     DIGITAL_SCRATCH = False
@@ -113,10 +119,15 @@ PER_REV_SCALE = 256.0 / ENC_PULSE  # 1.28 for 50 holes
 
 # Smoothing state for scaled mode only (raw_axis_mode false)
 # When speedy_math true -> per-rev correct cur/200*256 with smoothing; else raw*scale 1:1
-if not RAW_AXIS_MODE and SPEEDY_MATH:
-    _disp_init_scale = PER_REV_SCALE * AXIS_SCALE
+if not RAW_AXIS_MODE:
+    if SPEEDY_MATH:
+        _disp_init_scale = PER_REV_SCALE * AXIS_SCALE
+    elif SCRATCH_SMOOTHING:
+        _disp_init_scale = AXIS_SCALE
+    else:
+        _disp_init_scale = AXIS_SCALE
 else:
-    _disp_init_scale = AXIS_SCALE if not RAW_AXIS_MODE else 1.0
+    _disp_init_scale = 1.0
 _disp_pos = float(_encoder.position * INVERT_TURNTABLE * _disp_init_scale)
 
 def get_axis(now=None):
@@ -131,11 +142,15 @@ def get_axis(now=None):
         return raw_pos & 0xFF
     else:
         # Scaled mode: with speedy_math -> per-rev correct 200->256; without -> classic 1:1 raw*scale
-        # Continuous spin emits every intermediate tick at 1kHz (~1ms/step) when scale>1.
         if SPEEDY_MATH:
             target = float(raw_pos * PER_REV_SCALE * AXIS_SCALE)
         else:
             target = float(raw_pos * AXIS_SCALE)
+        if not SCRATCH_SMOOTHING:
+            # No smoothing - instant jump (skips in-between when scale>1, no lag)
+            _disp_pos = target
+            return int(target) & 0xFF
+        # Smoothing: 1 step/ms to hit every 1/255 when scale>1
         diff = target - _disp_pos
         if abs(diff) < 0.5:
             _disp_pos = target
