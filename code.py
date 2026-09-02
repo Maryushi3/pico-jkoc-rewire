@@ -80,18 +80,37 @@ else:
 # No divisor arg on RP2040 build - counts are raw quadrature edges.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
-def get_axis():
+# Smoothing state for scaled mode only (raw_axis_mode false)
+# Ensures every 1/255 tick is hit even when scale>1, but stops fast.
+_disp_pos = float(_encoder.position * INVERT_TURNTABLE * (AXIS_SCALE if not RAW_AXIS_MODE else 1.0))
+_prev_raw_for_smooth = _encoder.position * INVERT_TURNTABLE
+_last_move_time = time.monotonic()
+
+def get_axis(now=None):
+    global _disp_pos, _prev_raw_for_smooth, _last_move_time
     raw_pos = _encoder.position * INVERT_TURNTABLE
 
     if RAW_AXIS_MODE:
-        # Zero precision loss, instant 8-bit wrap.
-        # This is ABSOLUTE 0-255: beatoraja diffs successive reads.
-        # e.g. 10 -> 15 means +5 steps, 255 -> 2 means +3 (wrap).
+        # Zero precision loss, instant 8-bit wrap - no smoothing
         return raw_pos & 0xFF
     else:
-        # Scaled sensitivity mode - multiplies absolute before wrap.
-        # <1.0 = less sensitive, >1.0 = more sensitive.
-        return int(raw_pos * AXIS_SCALE) & 0xFF
+        # Scaled mode with 1-step slew to hit every 1/255 value.
+        # Continuous spin emits every intermediate tick at 1kHz (~1ms/step).
+        # Stops within diff ms (max a few ms) without jumping.
+        target = float(raw_pos * AXIS_SCALE)
+        if raw_pos != _prev_raw_for_smooth:
+            _prev_raw_for_smooth = raw_pos
+            _last_move_time = now if now is not None else time.monotonic()
+
+        diff = target - _disp_pos
+        if abs(diff) < 0.5:
+            _disp_pos = target
+        elif diff > 0:
+            _disp_pos += 1.0 if diff > 1.0 else diff
+        elif diff < 0:
+            _disp_pos += -1.0 if diff < -1.0 else diff
+
+        return int(_disp_pos) & 0xFF
 
 # -----------------------------------------------
 # Buttons Setup + Per-Button Debounce
@@ -197,7 +216,8 @@ while True:
     now = time.monotonic()
 
     # Axis is never debounced - scratch needs every edge
-    axis = get_axis()
+    # Smoothing only active when raw_axis_mode false, pass now for idle snap
+    axis = get_axis(now)
     key_byte, extra = read_buttons_debounced(now)
 
     if axis != _prev_axis or key_byte != _prev_keys or extra != _prev_extra:
