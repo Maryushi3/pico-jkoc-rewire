@@ -37,7 +37,9 @@ CONFIG = {
     "raw_axis_mode": True,
     "axis_scale": 1.0,
     "invert_turntable": False,
-    "debounce_ms": 5
+    "debounce_ms": 5,
+    "digital_scratch": False,
+    "digital_scratch_timeout_ms": 80
 }
 
 try:
@@ -71,6 +73,20 @@ if DEBOUNCE_SEC == 0:
     print("Debounce disabled (0 ms) - membranes may chatter")
 else:
     print(f"Debounce: {_debounce_ms} ms")
+try:
+    DIGITAL_SCRATCH = bool(CONFIG["digital_scratch"])
+except Exception:
+    DIGITAL_SCRATCH = False
+try:
+    _digital_timeout_ms = int(CONFIG["digital_scratch_timeout_ms"])
+    _digital_timeout_ms = max(20, min(500, _digital_timeout_ms))
+except Exception:
+    _digital_timeout_ms = 80
+DIGITAL_TIMEOUT_SEC = _digital_timeout_ms / 1000.0
+if DIGITAL_SCRATCH:
+    print(f"Digital scratch: POV hat up/down, timeout {_digital_timeout_ms}ms")
+else:
+    print("Digital scratch: disabled (POV neutral)")
 
 # -----------------------------------------------
 # Encoder Setup
@@ -105,6 +121,33 @@ def get_axis(now=None):
             _disp_pos += -1.0 if diff < -1.0 else diff
 
         return int(_disp_pos) & 0xFF
+
+# Digital scratch POV state (hat 0=up, 4=down, 8=neutral)
+_HAT_NEUTRAL = 8
+_HAT_UP = 0
+_HAT_DOWN = 4
+_prev_raw_pov = _encoder.position * INVERT_TURNTABLE
+_last_pov_move = time.monotonic()
+_current_hat = _HAT_NEUTRAL
+
+def get_pov_hat(now):
+    global _prev_raw_pov, _last_pov_move, _current_hat
+    if not DIGITAL_SCRATCH:
+        return _HAT_NEUTRAL
+    raw_pos = _encoder.position * INVERT_TURNTABLE
+    delta = raw_pos - _prev_raw_pov
+    if delta != 0:
+        # Direction change immediately updates hat
+        _current_hat = _HAT_UP if delta > 0 else _HAT_DOWN
+        _prev_raw_pov = raw_pos
+        _last_pov_move = now
+        return _current_hat
+    # No movement - check timeout for neutral
+    if (now - _last_pov_move) >= DIGITAL_TIMEOUT_SEC:
+        if _current_hat != _HAT_NEUTRAL:
+            _current_hat = _HAT_NEUTRAL
+        return _HAT_NEUTRAL
+    return _current_hat
 
 # -----------------------------------------------
 # Buttons Setup + Per-Button Debounce
@@ -188,9 +231,13 @@ for device in usb_hid.devices:
 if gamepad is None:
     raise RuntimeError("IIDX HID gamepad not found - check boot.py and fully power cycle.")
 
-def send_report(axis, key_byte, extra_byte):
+def send_report(axis, key_byte, extra_byte, hat=_HAT_NEUTRAL):
     try:
-        gamepad.send_report(struct.pack("BBB", axis, key_byte, extra_byte))
+        # 4 bytes with hat (boot.py in_report_lengths 4), fallback to 3 for old boot.py
+        try:
+            gamepad.send_report(struct.pack("BBBB", axis, key_byte, extra_byte, hat & 0x0F))
+        except (ValueError, OSError):
+            gamepad.send_report(struct.pack("BBB", axis, key_byte, extra_byte))
     except OSError:
         # Prevents code crash if PC stops polling USB
         pass
@@ -200,11 +247,12 @@ def send_report(axis, key_byte, extra_byte):
 # -----------------------------------------------
 
 print("IIDX Controller ready.")
-print(f"Config: raw_axis={RAW_AXIS_MODE} scale={AXIS_SCALE} invert={INVERT_TURNTABLE==-1} debounce={_debounce_ms}ms")
+print(f"Config: raw_axis={RAW_AXIS_MODE} scale={AXIS_SCALE} invert={INVERT_TURNTABLE==-1} debounce={_debounce_ms}ms hat={'digital' if DIGITAL_SCRATCH else 'off'}")
 
 _prev_axis = -1
 _prev_keys = -1
 _prev_extra = -1
+_prev_hat = -1
 
 while True:
     now = time.monotonic()
@@ -213,12 +261,14 @@ while True:
     # Smoothing only active when raw_axis_mode false, pass now for idle snap
     axis = get_axis(now)
     key_byte, extra = read_buttons_debounced(now)
+    hat = get_pov_hat(now)
 
-    if axis != _prev_axis or key_byte != _prev_keys or extra != _prev_extra:
-        send_report(axis, key_byte, extra)
+    if axis != _prev_axis or key_byte != _prev_keys or extra != _prev_extra or hat != _prev_hat:
+        send_report(axis, key_byte, extra, hat)
         _prev_axis = axis
         _prev_keys = key_byte
         _prev_extra = extra
+        _prev_hat = hat
 
     # ~1000 Hz poll: keeps USB <1ms latency but avoids 100% busy loop
     # and lets CircuitPython supervisor run. Increase to 0.002 if hot.

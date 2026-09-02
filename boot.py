@@ -15,8 +15,9 @@ supervisor.set_usb_identification(
 )
 
 # ------------------------------------------------------------------
-# HID Report Descriptor (3 bytes, Report ID 1)
+# HID Report Descriptor (4 bytes, Report ID 1)
 # Absolute 0-255 (beatoraja diffs frames, wraps 255->0)
+# + POV hat for digital scratch (up/down, neutral when stopped)
 # ------------------------------------------------------------------
 IIDX_REPORT_DESCRIPTOR = bytes([
     0x05, 0x01,        # Usage Page (Generic Desktop)
@@ -62,6 +63,22 @@ IIDX_REPORT_DESCRIPTOR = bytes([
     0x95, 0x06,
     0x81, 0x03,
 
+    # -- POV hat (4 bits hat + 4 bits padding) --------------------
+    # 0=up, 4=down, 8=neutral (center)
+    0x05, 0x01,        #   Usage Page (Generic Desktop)
+    0x09, 0x39,        #   Usage (Hat Switch)
+    0x15, 0x00,        #   Logical Minimum (0)
+    0x25, 0x08,        #   Logical Maximum (8)
+    0x35, 0x00,        #   Physical Minimum (0)
+    0x46, 0x3B, 0x01,  #   Physical Maximum (315)
+    0x65, 0x14,        #   Unit (Degrees)
+    0x75, 0x04,        #   Report Size (4)
+    0x95, 0x01,        #   Report Count (1)
+    0x81, 0x02,        #   Input (Data, Variable, Absolute)
+    0x75, 0x04,        #   Report Size (4) padding
+    0x95, 0x01,        #   Report Count (1)
+    0x81, 0x03,        #   Input (Constant, padding)
+
     0xC0,              # End Collection
 ])
 
@@ -70,7 +87,7 @@ iidx_gamepad = usb_hid.Device(
     usage_page=0x01,          # Generic Desktop
     usage=0x05,               # Gamepad
     report_ids=(1,),
-    in_report_lengths=(3,),   # 1 byte axis + 1 byte keys + 1 byte start/sel
+    in_report_lengths=(4,),   # 1 axis + 1 keys + 1 start/sel + 1 hat/pad
     out_report_lengths=(0,),
 )
 

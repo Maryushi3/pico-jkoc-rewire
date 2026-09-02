@@ -2,5 +2,7 @@
   "raw_axis_mode": true,
   "axis_scale": 1.0,
   "invert_turntable": false,
-  "debounce_ms": 5
+  "debounce_ms": 5,
+  "digital_scratch": false,
+  "digital_scratch_timeout_ms": 80
 }
