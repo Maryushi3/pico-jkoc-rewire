@@ -330,7 +330,6 @@ while True:
         _prev_extra = extra
         _prev_hat = hat
 
-    # Busy poll for lowest latency - CPU is for this. Yield to supervisor tick.
-    # time.sleep(0) is too coarse on CircuitPython; just run tight.
-    # If hot (>70C) or USB drops, add time.sleep(0.0005)
-    pass
+    # Throttled poll for closed box no airflow: 0.5ms sleep caps ~2000 loops/s ~60% CPU
+    # Keeps <0.7ms latency vs tight busy 0.2ms but stays <55C.
+    time.sleep(0.0005)
