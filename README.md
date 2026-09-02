@@ -1,14 +1,14 @@
 # pikoc - Pi Pico IIDX controller (JKOC)
 
-CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico non-W** for **beatoraja**. Keys + turntable -> single HID gamepad.
+CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico non-W** for **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV.
 
 ## Hardware
 
 * Board: RP2040 Pico (non-W)
-* `GP0/GP1` - JKOC photointerrupter encoder (quadrature)
+* `GP0/GP1` - JKOC photointerrupter encoder (quadrature, 50 holes -> 200 Pulses `4x` `code.py:101`)
 * `GP2-GP8` - Keys 1-7 (white/black)
 * `GP9` - Start, `GP10` - Select
-* Buttons: active-LOW (to GND), internal `Pull.UP` (`code.py:109`)
+* Buttons: active-LOW (to GND), internal `Pull.UP` (`code.py:122`)
 
 ## Wiring (hand-rewired JKOC -> Pico)
 
@@ -32,46 +32,60 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 
 1. Flash CircuitPython for Pico (UF2).
 2. Copy `boot.py`, `code.py`, `config.json` to `CIRCUITPY` drive.
-3. **Power-cycle** (unplug, not soft reset) after changing `boot.py` - USB descriptor is set at enumeration `boot.py:12`.
+3. **Power-cycle** (unplug, not soft reset) after changing `boot.py` - USB descriptor (`boot.py:33` `4 bytes` with hat) is set at enumeration.
 
 ## Configuration
 
-`config.json` (live without reflash, `code.py:44`):
+`config.json` (live without reflash, `code.py:36`; `boot.py` hat requires power-cycle):
 
 ```json
 {
   "raw_axis_mode": true,
   "axis_scale": 1.0,
   "invert_turntable": false,
-  "debounce_ms": 5
+  "debounce_ms": 5,
+  "speedy_math": false,
+  "digital_scratch": false,
+  "digital_scratch_suppress_analog": false,
+  "digital_scratch_timeout_ms": 80
 }
 ```
 
-* `raw_axis_mode` `code.py:53` - `true` = `axis_scale` ignored, send `raw_pos &0xFF`.
-* `axis_scale` `code.py:57` - `0.1..5.0` scaling of absolute position before `&0xFF` (only when `raw_axis_mode false`). `1.0` = predictable `1` tick `->` `1/255` (`~96` counts/rev, `4x` decode `code.py:79`).
-* `invert_turntable` - flip scratch direction.
-* `debounce_ms` `0..50` per-button debounce `code.py:69,148` (scratch never debounced `code.py:221`). `5` for JKOC membranes.
+| Key | Range | Effect `code.py:54` |
+|---|---|---|
+| `raw_axis_mode` | `bool` | `true` = `axis_scale` ignored, `raw_pos &0xFF` `1 tick=1/255` predictable. |
+| `axis_scale` | `0.1..5.0` | Only when `raw false`. `1.0` = `1:1` same as `raw true` unless `speedy_math`. |
+| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `200 Pulses->256` `1.28*scale` `pico-compare` `200/256` with `1 step/ms` smoothing `code.py:109` to hit every `1/255`. |
+| `invert_turntable` | `bool` | Flip scratch direction. |
+| `debounce_ms` | `0..50` | Per-button debounce `code.py:68,139` (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
+| `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` `code.py:130` (analog still sent in parallel). |
+| `digital_scratch_suppress_analog` | `bool` | `true` + `digital true` = hold analog at `127` `code.py:110` for exclusive digital. |
+| `digital_scratch_timeout_ms` | `20..500` | Time after last tick before hat returns to neutral `8` `code.py:91` (default `80`). Direction change is immediate. |
+
+Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` off.
 
 ## HID
 
-`boot.py:22` single gamepad `Report ID 1`, 3 bytes:
+`boot.py:33` single gamepad `Report ID 1`, 4 bytes `boot.py:61` `in_report_lengths 4`:
 
 * Byte 0: `X` turntable absolute `0-255` `wrap 255->0` (`0x81 0x02`)
 * Byte 1: Keys 1-7 bits 0-6
-* Byte 2: Start bit0, Select bit1
+* Byte 2: Start bit0, Select bit1 (6 pad bits)
+* Byte 3: POV hat `4 bits 0=up 4=down 8=neutral` + `4 pad` (`0x09 0x39`)
 
-`code.py:200` `struct.pack("BBB")`, change-only send at `~1kHz` `code.py:232`.
+`code.py:180` `struct.pack("BBBB")` with `BBB` fallback, change-only send at `~1kHz` `code.py:242`.
 
 ## beatoraja
 
 * Map `X` axis to Scratch (analog). Threshold is stock `1/50` analog step - leave as-is with `scale 1.0`.
+* If `digital_scratch true`, map `POV Up/Down` to scratch up/down for fallback software.
 * Map Buttons 1-9 to keys/start/select.
 
 ## Repo
 
 ```
 git log --oneline
-5a9de85 revert: remove relative_mode ...
-cf047dd fix: per-button debounce ...
-747e8cd Initial commit ...
+5f62e47 feat: move per-rev under speedy_math flag
+eeb7477 feat: per-rev correct 50 holes ->200 pulses mapping
+...
 ```

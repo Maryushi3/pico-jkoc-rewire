@@ -1,6 +1,6 @@
 {
-  "raw_axis_mode": true,
-  "axis_scale": 1.0,
+  "raw_axis_mode": false,
+  "axis_scale": 4.0,
   "invert_turntable": false,
   "debounce_ms": 5,
   "speedy_math": false,
