@@ -5,7 +5,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 ## Hardware
 
 * Board: RP2040 Pico (non-W)
-* `GP0/GP1` - JKOC photointerrupter encoder (quadrature, 50 holes -> 200 Pulses `4x` `code.py:101`)
+* `GP0/GP1` - JKOC photointerrupter encoder (quadrature, 50 Pulses `code.py:112`)
 * `GP2-GP8` - Keys 1-7 (white/black)
 * `GP9` - Start, `GP10` - Select
 * Buttons: active-LOW (to GND), internal `Pull.UP` (`code.py:122`)
@@ -55,7 +55,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 |---|---|---|
 | `raw_axis_mode` | `bool` | `true` = `axis_scale` ignored, `raw_pos &0xFF` `1 tick=1/255` predictable. |
 | `axis_scale` | `0.1..5.0` | Only when `raw false`. `1.0` = `1:1` same as `raw true` unless `speedy_math`. |
-| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `200 Pulses->256` `1.28*scale` with `1 step/ms` smoothing `code.py:109` to hit every `1/255`. |
+| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `50 Pulses->256` `5.12*scale` with `1 step/ms` smoothing `code.py:122` to hit every `1/255`. |
 | `invert_turntable` | `bool` | Flip scratch direction. |
 | `debounce_ms` | `0..50` | Per-button debounce `code.py:68,139` (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
 | `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` `code.py:130` (analog still sent in parallel). |
@@ -72,11 +72,11 @@ Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` 
   ```
   or `raw false` `scale 1.0` `speedy false` same.
 
-* **Rotation:Output `1:1` (`1 full spin =256 steps = wraps to same 0`)** - per-rev correct `200 Pulses ->256` `code.py:112`:
+* **Rotation:Output `1:1` (`1 full spin =256 steps = wraps to same 0`)** - per-rev correct `50 Pulses ->256` `code.py:117`:
   ```json
   { "raw_axis_mode": false, "axis_scale": 1.0, "speedy_math": true, "scratch_smoothing": false }
   ```
-  (`1.28` steps per tick, `200 ticks =256`). Use `scratch_smoothing true` to hit every `1/255` with `1ms` tail, `false` for instant `2-3` jump no lag like `pico-compare`.
+  (`5.12` steps per tick, `50 ticks =256`). Use `scratch_smoothing true` to hit every `1/255` with `1ms` tail, `false` for instant `5` jump no lag.
 
 ## HID
 

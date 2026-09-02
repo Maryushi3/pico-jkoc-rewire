@@ -109,13 +109,13 @@ else:
 # Encoder Setup
 # -----------------------------------------------
 
-# rotaryio does 4x decoding. JKOC is 50 holes -> 200 Pulses (PPR*4).
+# rotaryio does 4x decoding. JKOC is 50 Pulses per rev (50 holes).
 # pocket-iidx uses 24 PPR ->96 Pulses. No divisor arg on RP2040 build.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
-# per-rev speedy math: 50 holes ->200 Pulses, 1 rev =256 steps ->1.28/tick (optional)
-ENC_PULSE = 200
-PER_REV_SCALE = 256.0 / ENC_PULSE  # 1.28 for 50 holes
+# per-rev speedy math: 50 Pulses per rev ->256 steps ->5.12/tick (1:1 physical)
+ENC_PULSE = 50
+PER_REV_SCALE = 256.0 / ENC_PULSE  # 5.12
 
 # Smoothing state for scaled mode only (raw_axis_mode false)
 # When speedy_math true -> per-rev correct cur/200*256 with smoothing; else raw*scale 1:1
