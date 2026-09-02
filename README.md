@@ -26,7 +26,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 | Ground (common) | black + gray | `GND` |
 | VCC | green | **NC** |
 
-> **Note:** JKOC photointerrupter is powered from `3.3V` (verified working) - no divider needed, `GP0/GP1` are safe.
+> **Note:** JKOC photointerrupter is powered from `3.3V` (verified working).
 
 ## Install
 

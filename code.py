@@ -14,7 +14,7 @@ Hardware (RP2040 Pico non-W, CircuitPython):
   GP9  - Start
   GP10 - Select
 
-Photointerrupter powered from 3.3V (verified working, no divider needed).
+Photointerrupter powered from 3.3V (verified working).
 """
 
 import board
