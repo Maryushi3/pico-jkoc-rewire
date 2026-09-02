@@ -55,7 +55,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 |---|---|---|
 | `raw_axis_mode` | `bool` | `true` = `axis_scale` ignored, `raw_pos &0xFF` `1 tick=1/255` predictable. |
 | `axis_scale` | `0.1..5.0` | Only when `raw false`. `1.0` = `1:1` same as `raw true` unless `speedy_math`. |
-| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `200 Pulses->256` `1.28*scale` ([speedypotato `pocket-iidx`](https://github.com/speedypotato/Pico-Game-Controller/tree/release/pocket-iidx) `200/256`) with `1 step/ms` smoothing `code.py:109` to hit every `1/255`. |
+| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `200 Pulses->256` `1.28*scale` with `1 step/ms` smoothing `code.py:109` to hit every `1/255`. |
 | `invert_turntable` | `bool` | Flip scratch direction. |
 | `debounce_ms` | `0..50` | Per-button debounce `code.py:68,139` (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
 | `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` `code.py:130` (analog still sent in parallel). |
@@ -95,11 +95,6 @@ Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` 
 * If `digital_scratch true`, map `POV Up/Down` to scratch up/down for fallback software.
 * Map Buttons 1-9 to keys/start/select.
 
-## Repo
+## Credits
 
-```
-git log --oneline
-5f62e47 feat: move per-rev under speedy_math flag
-eeb7477 feat: per-rev correct 50 holes ->200 pulses mapping
-...
-```
+* `speedy_math` per-rev `200->256` inspired by [speedypotato/Pico-Game-Controller `pocket-iidx`](https://github.com/speedypotato/Pico-Game-Controller/tree/release/pocket-iidx)
