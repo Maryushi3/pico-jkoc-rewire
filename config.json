@@ -1,10 +1,10 @@
 {
   "raw_axis_mode": false,
-  "axis_scale": 4.0,
+  "axis_scale": 5,
   "invert_turntable": false,
   "debounce_ms": 5,
   "speedy_math": false,
-  "scratch_smoothing": true,
+  "scratch_smoothing": false,
   "digital_scratch": false,
   "digital_scratch_suppress_analog": false,
   "digital_scratch_timeout_ms": 80

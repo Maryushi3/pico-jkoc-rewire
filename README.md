@@ -62,7 +62,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 | `digital_scratch_suppress_analog` | `bool` | `true` + `digital true` = hold analog at `127` `code.py:110` for exclusive digital. |
 | `digital_scratch_timeout_ms` | `20..500` | Time after last tick before hat returns to neutral `8` `code.py:91` (default `80`). Direction change is immediate. |
 
-Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` off.
+Current disk state: `raw false` + `scale 5` `speedy off` `smoothing off` (matches `5` ticks/scroll below).
 
 ### 1:1 Examples
 
@@ -91,7 +91,8 @@ Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` 
 
 ## beatoraja
 
-* Map `X` axis to Scratch (analog). Threshold is stock `1/50` analog step - leave as-is with `scale 1.0`.
+* Map `X` axis to Scratch (analog). Input settings `Analog scratch threshold` `30-40` for current `scale 5` `raw false`.
+* Music select `Analog ticks per scroll` `5` (match `axis_scale`).
 * If `digital_scratch true`, map `POV Up/Down` to scratch up/down for fallback software.
 * Map Buttons 1-9 to keys/start/select.
 
