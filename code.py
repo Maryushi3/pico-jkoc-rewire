@@ -130,34 +130,52 @@ else:
     _disp_init_scale = 1.0
 _disp_pos = float(_encoder.position * INVERT_TURNTABLE * _disp_init_scale)
 
+_AXIS_SCALE_INT = int(AXIS_SCALE) if AXIS_SCALE == int(AXIS_SCALE) else None
+
 def get_axis(now=None):
     global _disp_pos
     # Analog suppress: hold center when digital mode wants exclusive POV
     if DIGITAL_SCRATCH and DIGITAL_SUPPRESS_ANALOG:
         return 127
-    raw_pos = _encoder.position * INVERT_TURNTABLE
+    # Local bind for speed (avoids global lookup in hot loop)
+    enc = _encoder
+    inv = INVERT_TURNTABLE
+    raw_pos = enc.position * inv
 
     if RAW_AXIS_MODE:
-        # Zero precision loss, instant 8-bit wrap - no smoothing
+        # Zero precision loss, instant 8-bit wrap - no smoothing, int only
         return raw_pos & 0xFF
     else:
-        # Scaled mode: with speedy_math -> per-rev correct 200->256; without -> classic 1:1 raw*scale
+        # Use int when scale is integer to avoid float
         if SPEEDY_MATH:
-            target = float(raw_pos * PER_REV_SCALE * AXIS_SCALE)
+            # per-rev 50->256: keep float for 5.12
+            target = raw_pos * PER_REV_SCALE * AXIS_SCALE
+        elif _AXIS_SCALE_INT is not None:
+            target = raw_pos * _AXIS_SCALE_INT
         else:
-            target = float(raw_pos * AXIS_SCALE)
+            target = raw_pos * AXIS_SCALE
         if not SCRATCH_SMOOTHING:
-            # No smoothing - instant jump (skips in-between when scale>1, no lag)
-            _disp_pos = target
+            # No smoothing - instant jump, keep disp in sync for next smooth enable
+            _disp_pos = float(target)
             return int(target) & 0xFF
         # Smoothing: 1 step/ms to hit every 1/255 when scale>1
         diff = target - _disp_pos
-        if abs(diff) < 0.5:
-            _disp_pos = target
-        elif diff > 0:
-            _disp_pos += 1.0 if diff > 1.0 else diff
-        elif diff < 0:
-            _disp_pos += -1.0 if diff < -1.0 else diff
+        # abs(diff) micro-opt: manual
+        if diff < 0:
+            diff_neg = -diff
+            if diff_neg < 0.5:
+                _disp_pos = target
+            elif diff < -1.0:
+                _disp_pos -= 1.0
+            else:
+                _disp_pos = target
+        else:
+            if diff < 0.5:
+                _disp_pos = target
+            elif diff > 1.0:
+                _disp_pos += 1.0
+            else:
+                _disp_pos = target
 
         return int(_disp_pos) & 0xFF
 
@@ -270,15 +288,13 @@ for device in usb_hid.devices:
 if gamepad is None:
     raise RuntimeError("IIDX HID gamepad not found - check boot.py and fully power cycle.")
 
+_report_struct = struct.Struct("BBBB")
 def send_report(axis, key_byte, extra_byte, hat=_HAT_NEUTRAL):
+    # Direct 4-byte report (boot.py 4), no fallback needed - saves try/except on hot path
     try:
-        # 4 bytes with hat (boot.py in_report_lengths 4), fallback to 3 for old boot.py
-        try:
-            gamepad.send_report(struct.pack("BBBB", axis, key_byte, extra_byte, hat & 0x0F))
-        except (ValueError, OSError):
-            gamepad.send_report(struct.pack("BBB", axis, key_byte, extra_byte))
+        gamepad.send_report(_report_struct.pack(axis, key_byte, extra_byte, hat & 0x0F))
     except OSError:
-        # Prevents code crash if PC stops polling USB
+        # PC not polling
         pass
 
 # -----------------------------------------------
@@ -293,22 +309,28 @@ _prev_keys = -1
 _prev_extra = -1
 _prev_hat = -1
 
-while True:
-    now = time.monotonic()
+# Local binds for main loop hot path
+_monotonic = time.monotonic
+_get_axis = get_axis
+_read_buttons = read_buttons_debounced
+_get_hat = get_pov_hat
+_send = send_report
 
-    # Axis is never debounced - scratch needs every edge
-    # Smoothing only active when raw_axis_mode false, pass now for idle snap
-    axis = get_axis(now)
-    key_byte, extra = read_buttons_debounced(now)
-    hat = get_pov_hat(now)
+while True:
+    now = _monotonic()
+
+    axis = _get_axis(now)
+    key_byte, extra = _read_buttons(now)
+    hat = _get_hat(now)
 
     if axis != _prev_axis or key_byte != _prev_keys or extra != _prev_extra or hat != _prev_hat:
-        send_report(axis, key_byte, extra, hat)
+        _send(axis, key_byte, extra, hat)
         _prev_axis = axis
         _prev_keys = key_byte
         _prev_extra = extra
         _prev_hat = hat
 
-    # ~1000 Hz poll: keeps USB <1ms latency but avoids 100% busy loop
-    # and lets CircuitPython supervisor run. Increase to 0.002 if hot.
-    time.sleep(0.001)
+    # Busy poll for lowest latency - CPU is for this. Yield to supervisor tick.
+    # time.sleep(0) is too coarse on CircuitPython; just run tight.
+    # If hot (>70C) or USB drops, add time.sleep(0.0005)
+    pass
