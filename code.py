@@ -39,6 +39,7 @@ CONFIG = {
     "invert_turntable": False,
     "debounce_ms": 5,
     "digital_scratch": False,
+    "digital_scratch_suppress_analog": False,
     "digital_scratch_timeout_ms": 80
 }
 
@@ -78,13 +79,17 @@ try:
 except Exception:
     DIGITAL_SCRATCH = False
 try:
+    DIGITAL_SUPPRESS_ANALOG = bool(CONFIG["digital_scratch_suppress_analog"])
+except Exception:
+    DIGITAL_SUPPRESS_ANALOG = False
+try:
     _digital_timeout_ms = int(CONFIG["digital_scratch_timeout_ms"])
     _digital_timeout_ms = max(20, min(500, _digital_timeout_ms))
 except Exception:
     _digital_timeout_ms = 80
 DIGITAL_TIMEOUT_SEC = _digital_timeout_ms / 1000.0
 if DIGITAL_SCRATCH:
-    print(f"Digital scratch: POV hat up/down, timeout {_digital_timeout_ms}ms")
+    print(f"Digital scratch: POV hat up/down, timeout {_digital_timeout_ms}ms, suppress_analog={DIGITAL_SUPPRESS_ANALOG}")
 else:
     print("Digital scratch: disabled (POV neutral)")
 
@@ -102,6 +107,9 @@ _disp_pos = float(_encoder.position * INVERT_TURNTABLE * (AXIS_SCALE if not RAW_
 
 def get_axis(now=None):
     global _disp_pos
+    # Analog suppress: hold center when digital mode wants exclusive POV
+    if DIGITAL_SCRATCH and DIGITAL_SUPPRESS_ANALOG:
+        return 127
     raw_pos = _encoder.position * INVERT_TURNTABLE
 
     if RAW_AXIS_MODE:
