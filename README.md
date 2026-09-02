@@ -26,7 +26,7 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 | Ground (common) | black + gray | `GND` |
 | VCC | green | **NC** |
 
-> **Warning `code.py:4`:** JKOC interrupter is 5V stock. `250Ω` on LED power does **not** protect the phototransistor output - high can be ~5V. RP2040 max is 3.63V (not 5V tolerant). Use divider (`10k/15k` to 3.3V) or power from `3V3` after measuring, not direct 5V to `GP0/GP1`.
+> **Note:** JKOC photointerrupter is powered from `3.3V` (verified working) - no divider needed, `GP0/GP1` are safe.
 
 ## Install
 
@@ -51,16 +51,17 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 }
 ```
 
-| Key | Range | Effect `code.py:54` |
+| Key | Range | Effect |
 |---|---|---|
 | `raw_axis_mode` | `bool` | `true` = `axis_scale` ignored, `raw_pos &0xFF` `1 tick=1/255` predictable. |
 | `axis_scale` | `0.1..5.0` | Only when `raw false`. `1.0` = `1:1` same as `raw true` unless `speedy_math`. |
-| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `50 Pulses->256` `5.12*scale` with `1 step/ms` smoothing `code.py:122` to hit every `1/255`. |
+| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `50 Pulses->256` `5.12*scale` with `1 step/ms` smoothing to hit every `1/255`. |
 | `invert_turntable` | `bool` | Flip scratch direction. |
-| `debounce_ms` | `0..50` | Per-button debounce `code.py:68,139` (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
-| `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` `code.py:130` (analog still sent in parallel). |
-| `digital_scratch_suppress_analog` | `bool` | `true` + `digital true` = hold analog at `127` `code.py:110` for exclusive digital. |
-| `digital_scratch_timeout_ms` | `20..500` | Time after last tick before hat returns to neutral `8` `code.py:91` (default `80`). Direction change is immediate. |
+| `debounce_ms` | `0..50` | Per-button debounce (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
+| `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` (analog still sent in parallel). |
+| `digital_scratch_suppress_analog` | `bool` | `true` + `digital true` = hold analog at `127` for exclusive digital. |
+| `digital_scratch_timeout_ms` | `20..500` | Time after last tick before hat returns to neutral `8` (default `80`). Direction change is immediate. |
+| `scratch_smoothing` | `bool` | `true` = `1 step/ms` smoothing to hit every `1/255` when `scale>1`; `false` = instant jump. |
 
 Current disk state: `raw false` + `scale 5` `speedy off` `smoothing off` (matches `5` ticks/scroll below).
 

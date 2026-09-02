@@ -2,8 +2,8 @@
 code.py  -  IIDX Controller (Optimized with Config & Latency Protection)
 
 Hardware (RP2040 Pico non-W, CircuitPython):
-  GP0  - Encoder channel A  (JKOC photointerrupter) - WARNING: 3.3V only, no 5V
-  GP1  - Encoder channel B  (JKOC photointerrupter) - see note below
+  GP0  - Encoder channel A  (JKOC photointerrupter, 3.3V powered)
+  GP1  - Encoder channel B  (JKOC photointerrupter, 3.3V powered)
   GP2  - Key 1  (white)
   GP3  - Key 2  (black)
   GP4  - Key 3  (white)
@@ -14,11 +14,7 @@ Hardware (RP2040 Pico non-W, CircuitPython):
   GP9  - Start
   GP10 - Select
 
-JKOC photointerrupter is 5V stock. Power via 250 Ohm from 5V limits LED
-current but collector output can still swing to ~5V. RP2040 GPIO abs max
-is 3.63V and not 5V tolerant. Feed collector via divider (e.g. 10k/15k to
-3.3V) or power the sensor from 3V3 if you measured clean switching.
-Direct 5V -> GP0/GP1 will eventually damage the Pico.
+Photointerrupter powered from 3.3V (verified working, no divider needed).
 """
 
 import board
