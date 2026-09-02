@@ -81,13 +81,11 @@ else:
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
 # Smoothing state for scaled mode only (raw_axis_mode false)
-# Ensures every 1/255 tick is hit even when scale>1, but stops fast.
+# Ensures every 1/255 tick is hit even when scale>1.
 _disp_pos = float(_encoder.position * INVERT_TURNTABLE * (AXIS_SCALE if not RAW_AXIS_MODE else 1.0))
-_prev_raw_for_smooth = _encoder.position * INVERT_TURNTABLE
-_last_move_time = time.monotonic()
 
 def get_axis(now=None):
-    global _disp_pos, _prev_raw_for_smooth, _last_move_time
+    global _disp_pos
     raw_pos = _encoder.position * INVERT_TURNTABLE
 
     if RAW_AXIS_MODE:
@@ -96,12 +94,8 @@ def get_axis(now=None):
     else:
         # Scaled mode with 1-step slew to hit every 1/255 value.
         # Continuous spin emits every intermediate tick at 1kHz (~1ms/step).
-        # Stops within diff ms (max a few ms) without jumping.
+        # Tail after stop is diff ms (at most a few ms), no jump.
         target = float(raw_pos * AXIS_SCALE)
-        if raw_pos != _prev_raw_for_smooth:
-            _prev_raw_for_smooth = raw_pos
-            _last_move_time = now if now is not None else time.monotonic()
-
         diff = target - _disp_pos
         if abs(diff) < 0.5:
             _disp_pos = target
