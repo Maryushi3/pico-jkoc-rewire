@@ -64,6 +64,20 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 
 Current disk state: `raw false` + `scale 4.0` (high sensitivity test), `speedy` off.
 
+### 1:1 Examples
+
+* **Tick:Tick `1:1` (`1 encoder tick =1 analog step`)** - predictable `&0xFF` `code.py:115`:
+  ```json
+  { "raw_axis_mode": true, "axis_scale": 1.0, "speedy_math": false, "scratch_smoothing": true }
+  ```
+  or `raw false` `scale 1.0` `speedy false` same.
+
+* **Rotation:Output `1:1` (`1 full spin =256 steps = wraps to same 0`)** - per-rev correct `200 Pulses ->256` `code.py:112`:
+  ```json
+  { "raw_axis_mode": false, "axis_scale": 1.0, "speedy_math": true, "scratch_smoothing": false }
+  ```
+  (`1.28` steps per tick, `200 ticks =256`). Use `scratch_smoothing true` to hit every `1/255` with `1ms` tail, `false` for instant `2-3` jump no lag like `pico-compare`.
+
 ## HID
 
 `boot.py:33` single gamepad `Report ID 1`, 4 bytes `boot.py:61` `in_report_lengths 4`:
