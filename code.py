@@ -97,13 +97,17 @@ else:
 # Encoder Setup
 # -----------------------------------------------
 
-# rotaryio does 4x decoding. JKOC 24 PPR -> ~96 counts/rev.
-# No divisor arg on RP2040 build - counts are raw quadrature edges.
+# rotaryio does 4x decoding. JKOC is 50 holes -> 200 Pulses (PPR*4).
+# pocket-iidx uses 24 PPR ->96 Pulses. No divisor arg on RP2040 build.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
+# per-rev correct: 1 rev = 255 steps -> 256/200 =1.28 steps per tick
+ENC_PULSE = 200
+PER_REV_SCALE = 256.0 / ENC_PULSE  # 1.28 for 50 holes
+
 # Smoothing state for scaled mode only (raw_axis_mode false)
-# Ensures every 1/255 tick is hit even when scale>1.
-_disp_pos = float(_encoder.position * INVERT_TURNTABLE * (AXIS_SCALE if not RAW_AXIS_MODE else 1.0))
+# Scaled mode is now per-rev correct (cur/200*256) with smoothing to hit every 1/255.
+_disp_pos = float(_encoder.position * INVERT_TURNTABLE * (PER_REV_SCALE * AXIS_SCALE if not RAW_AXIS_MODE else 1.0))
 
 def get_axis(now=None):
     global _disp_pos
@@ -116,10 +120,10 @@ def get_axis(now=None):
         # Zero precision loss, instant 8-bit wrap - no smoothing
         return raw_pos & 0xFF
     else:
-        # Scaled mode with 1-step slew to hit every 1/255 value.
+        # Scaled mode is per-rev correct: 200 Pulses -> 256 steps.
         # Continuous spin emits every intermediate tick at 1kHz (~1ms/step).
         # Tail after stop is diff ms (at most a few ms), no jump.
-        target = float(raw_pos * AXIS_SCALE)
+        target = float(raw_pos * PER_REV_SCALE * AXIS_SCALE)
         diff = target - _disp_pos
         if abs(diff) < 0.5:
             _disp_pos = target
