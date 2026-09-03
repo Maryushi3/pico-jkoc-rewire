@@ -22,7 +22,8 @@ CONFIG = {
     "speedy_math": False,
     "digital_scratch": False,
     "digital_scratch_suppress_analog": False,
-    "digital_scratch_timeout_ms": 80
+    "digital_scratch_timeout_ms": 80,
+    "double_tap_window_ms": 300
 }
 
 try:
@@ -172,7 +173,13 @@ for idx, btn in enumerate(_buttons):
 
 # Double/triple tap state for Start (E2) / Select (E1) -> E3/E4 (CrazyRed style)
 # Only Start/Select are used for hotkeys; keys/TT remain free for settings.
-_DOUBLE_WINDOW = 0.30  # seconds between taps to count as double/triple
+try:
+    _double_window_ms = int(CONFIG["double_tap_window_ms"])
+    _double_window_ms = max(50, min(1000, _double_window_ms))
+except Exception:
+    _double_window_ms = 300
+_DOUBLE_WINDOW = _double_window_ms / 1000.0
+print(f"Double tap window: {_double_window_ms}ms")
 _select_prev = _stable[8]
 _start_prev = _stable[7]
 _select_last_press = 0.0

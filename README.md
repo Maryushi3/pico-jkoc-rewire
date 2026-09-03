@@ -58,6 +58,7 @@ The green cable is connected to VCC line on the factory controller PCB, but is l
 | `digital_scratch` | `bool` | `true` enables POV hat `up`/`down` (analog still sent in parallel) |
 | `digital_scratch_suppress_analog` | `bool` | disables analog output (for digital scratch mapping) |
 | `digital_scratch_timeout_ms` | `int` | Time after last tick before hat returns to neutral (default `80`); direction change is immediate |
+| `double_tap_window_ms` | `int` | Double/triple tap window for Start/Select `E3`/`E4` (default `300`); `50-1000` |
 
 Current disk state: `raw false` + `scale 5` `speedy off` (matches `5` ticks/scroll below).
 

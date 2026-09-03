@@ -6,5 +6,6 @@
   "speedy_math": false,
   "digital_scratch": false,
   "digital_scratch_suppress_analog": false,
-  "digital_scratch_timeout_ms": 80
+  "digital_scratch_timeout_ms": 80,
+  "double_tap_window_ms": 300
 }
