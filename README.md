@@ -1,112 +1,85 @@
 # pikoc - Pi Pico IIDX controller (JKOC)
 
-CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico non-W** for **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV.
-
-## Hardware
-
-* Board: RP2040 Pico (non-W)
-* `GP0/GP1` - JKOC photointerrupter encoder (quadrature, 50 Pulses `code.py:112`)
-* `GP2-GP8` - Keys 1-7 (white/black)
-* `GP9` - Start, `GP10` - Select
-* Buttons: active-LOW (to GND), internal `Pull.UP` (`code.py:122`)
+CircuitPython firmware for a **rewired** JKOC (Konami IIDX official controller). Designed for **Raspberry Pi Pico** (or any other RP2040 board). Tested with **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV. Configurable via a json file.
 
 ## Wiring (hand-rewired JKOC -> Pico)
 
-| JKOC wire | Pico | Function |
+### Photointerrupter encoder PCB (pins labeled on PCB)
+
+| PCB pin | Pico | function |
 |---|---|---|
-| red | `GP2` | Key 1 (white) |
-| yellow | `GP3` | Key 2 (black) |
-| dark blue | `GP4` | Key 3 (white) |
-| purple | `GP5` | Key 4 (black) |
-| pink | `GP6` | Key 5 (white) |
-| orange | `GP7` | Key 6 (black) |
-| brown | `GP8` | Key 7 (white) |
-| white | `GP9` | Start |
-| light blue | `GP10` | Select |
-| black + gray | `GND` | Ground (common) |
-| green | **NC** | VCC |
+| 1 | `GP0` or `GP1` | detector A |
+| 2 | `3.3V` via 250 Ohm resistor | LED power |
+| 3 | `GND` | ground |
+| 4 | `GP1` or `GP0` | detector B |
+| 5 | `3.3V` via 250 Ohm resistor | LED power |
 
-> **Note:** JKOC photointerrupter is powered from `3.3V`.
+You can short PCB pins 2 and 5 and connect them via a single 250 Ohm resistor to Pico's 3.3V.
 
-### Photointerrupter PCB (pins labeled on PCB)
+### Buttons PCB connector
 
-| PCB pin | To Pico | Function |
+| JKOC wire | Pico | function |
 |---|---|---|
-| 1 | `GP1` (with 4 = `GP0`, order flippable via `invert_turntable`) | Encoder Ch (A/B) |
-| 2 | `3.3V` via 250Ω resistor | 3.3V via 250Ω |
-| 3 | `GND` | GND |
-| 4 | `GP0` (with 1 = `GP1`) | Encoder Ch (B/A) |
-| 5 | `3.3V` via 250Ω resistor (shared with pin 2) | 3.3V via 250Ω |
+| red | `GP2` | key 1 (white) |
+| yellow | `GP3` | key 2 (black) |
+| dark blue | `GP4` | key 3 (white) |
+| purple | `GP5` | key 4 (black) |
+| pink | `GP6` | key 5 (white) |
+| orange | `GP7` | key 6 (black) |
+| brown | `GP8` | key 7 (white) |
+| white | `GP9` | start |
+| light blue | `GP10` | select |
+| black | `GND` | common ground |
+| gray | `GND` | common ground |
+| green | - | VCC |
+
+The green cable is connected to VCC line on the factory controller PCB, but is left not connected anywhere on the button PCB. You can isolate it and leave it not connected.
 
 ## Install
 
-1. Flash CircuitPython for Pico (UF2).
-2. Copy `boot.py`, `code.py`, `config.json` to `CIRCUITPY` drive.
-3. **Power-cycle** (unplug, not soft reset) after changing `boot.py` - USB descriptor (`boot.py:33` `4 bytes` with hat) is set at enumeration.
+1. flash CircuitPython for Pico UF2
+2. copy `boot.py`, `code.py`, `config.json` to `CIRCUITPY` drive
+3. adjust config.json to taste (but defaults are sane)
+3. **power-cycle** (unplug, not soft reset)
 
 ## Configuration
 
-`config.json` (live without reflash, `code.py:36`; `boot.py` hat requires power-cycle):
-
-```json
-{
-  "raw_axis_mode": true,
-  "axis_scale": 1.0,
-  "invert_turntable": false,
-  "debounce_ms": 5,
-  "speedy_math": false,
-  "digital_scratch": false,
-  "digital_scratch_suppress_analog": false,
-  "digital_scratch_timeout_ms": 80
-}
-```
-
-| Key | Range | Effect |
+| entry | type | effect |
 |---|---|---|
-| `raw_axis_mode` | `bool` | `true` = `axis_scale` ignored, `raw_pos &0xFF` `1 tick=1/255` predictable. |
-| `axis_scale` | `0.1..5.0` | Only when `raw false`. `1.0` = `1:1` same as `raw true` unless `speedy_math`. |
-| `speedy_math` | `bool` | `false` = classic `raw*scale`. `true` + `raw false` = per-rev `50 Pulses->256` `5.12*scale` with `1 step/ms` smoothing to hit every `1/255`. |
-| `invert_turntable` | `bool` | Flip scratch direction. |
-| `debounce_ms` | `0..50` | Per-button debounce (scratch never debounced). `3-5` for old membranes. `0` = bypass. |
-| `digital_scratch` | `bool` | `true` = enable POV hat `up`/`down` (analog still sent in parallel). |
-| `digital_scratch_suppress_analog` | `bool` | `true` + `digital true` = hold analog at `127` for exclusive digital. |
-| `digital_scratch_timeout_ms` | `20..500` | Time after last tick before hat returns to neutral `8` (default `80`). Direction change is immediate. |
-| `scratch_smoothing` | `bool` | `true` = `1 step/ms` smoothing to hit every `1/255` when `scale>1`; `false` = instant jump. |
+| `raw_axis_mode` | `bool` | when `true` makes 1 physical encoder disc "tick" move the analog axis 1 step (full range is 0-255); mathematical 1:1|
+| `axis_scale` | `float` | output axis multiplier; `1.0` = 1:1 same as with raw_axis_mode `true` unless `speedy_math` is `true` |
+| `speedy_math` | `bool` | `5.12` scale multiplier to hit full range of the analog axis; with axis_scale `1.0` results in physical 1:1 |
+| `invert_turntable` | `bool` | flips scratch direction |
+| `debounce_ms` | `int` | button debounce (scratch never debounced); debounces both edges (press and release); `3-5` for old membranes, `0` = bypass |
+| `digital_scratch` | `bool` | `true` enables POV hat `up`/`down` (analog still sent in parallel) |
+| `digital_scratch_suppress_analog` | `bool` | disables analog output (for digital scratch mapping) |
+| `digital_scratch_timeout_ms` | `int` | Time after last tick before hat returns to neutral (default `80`); direction change is immediate |
 
-Current disk state: `raw false` + `scale 5` `speedy off` `smoothing off` (matches `5` ticks/scroll below).
+Current disk state: `raw false` + `scale 5` `speedy off` (matches `5` ticks/scroll below).
 
 ### 1:1 Examples
 
-* **Tick:Tick `1:1` (`1 encoder tick =1 analog step`)** - predictable `&0xFF` `code.py:115`:
+* **Tick:Tick (mathematical) `1:1` (`1 encoder tick = 1 analog step`)** - predictable:
   ```json
-  { "raw_axis_mode": true, "axis_scale": 1.0, "speedy_math": false, "scratch_smoothing": true }
+  { "raw_axis_mode": true, "axis_scale": 1.0, "speedy_math": false}
   ```
   or `raw false` `scale 1.0` `speedy false` same.
 
-* **Rotation:Output `1:1` (`1 full spin =256 steps = wraps to same 0`)** - per-rev correct `50 Pulses ->256` `code.py:117`:
+* **Rotation:Output (physical) `1:1` (`1 full spin = 256 steps = wraps to same 0`)** - per-rev correct `50 Pulses ->256` `code.py:117`:
   ```json
-  { "raw_axis_mode": false, "axis_scale": 1.0, "speedy_math": true, "scratch_smoothing": false }
+  { "raw_axis_mode": false, "axis_scale": 1.0, "speedy_math": true}
   ```
-  (`5.12` steps per tick, `50 ticks =256`). Use `scratch_smoothing true` to hit every `1/255` with `1ms` tail, `false` for instant `5` jump no lag.
+  (`5.12` steps per tick, `50 ticks = 256`). May result in difficult song list scrolling, as steps are not identical.
 
-## HID
 
-`boot.py:33` single gamepad `Report ID 1`, 4 bytes `boot.py:61` `in_report_lengths 4`:
+## beatoraja settings
 
-* Byte 0: `X` turntable absolute `0-255` `wrap 255->0` (`0x81 0x02`)
-* Byte 1: Keys 1-7 bits 0-6
-* Byte 2: Start bit0, Select bit1 (6 pad bits)
-* Byte 3: POV hat `4 bits 0=up 4=down 8=neutral` + `4 pad` (`0x09 0x39`)
-
-`code.py:180` `struct.pack("BBBB")` with `BBB` fallback, change-only send at `~1kHz` `code.py:242`.
-
-## beatoraja
-
-* Map `X` axis to Scratch (analog). Input settings `Analog scratch threshold` `30-40` for current `scale 5` `raw false`.
-* Music select `Analog ticks per scroll` `5` (match `axis_scale`).
-* If `digital_scratch true`, map `POV Up/Down` to scratch up/down for fallback software.
-* Map Buttons 1-9 to keys/start/select.
+* set analog scratch threshold in Input to 30-40 for default `axis_scale` of 5 to feel okay
+* set analog ticks per scroll in Music Select to 5 (match `axis_scale`)
+* if mapping for digital scratch, suppress the analog axis in config for mapping
+* map buttons and scratch as usual
 
 ## Credits
 
-* `speedy_math` per-rev `200->256` inspired by [speedypotato/Pico-Game-Controller `pocket-iidx`](https://github.com/speedypotato/Pico-Game-Controller/tree/release/pocket-iidx)
+* `speedy_math` inspired by [speedypotato/Pico-Game-Controller `pocket-iidx`](https://github.com/speedypotato/Pico-Game-Controller/tree/release/pocket-iidx)
+* sanity saved by various LLMs

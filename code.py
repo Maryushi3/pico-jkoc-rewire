@@ -1,20 +1,11 @@
 """
-code.py  -  IIDX Controller (Optimized with Config & Latency Protection)
+code.py - IIDX Controller for JKOC on Pi Pico (beatoraja)
 
-Hardware (RP2040 Pico non-W, CircuitPython):
-  GP0  - Encoder channel A  (JKOC photointerrupter, 3.3V powered)
-  GP1  - Encoder channel B  (JKOC photointerrupter, 3.3V powered)
-  GP2  - Key 1  (white)
-  GP3  - Key 2  (black)
-  GP4  - Key 3  (white)
-  GP5  - Key 4  (black)
-  GP6  - Key 5  (white)
-  GP7  - Key 6  (black)
-  GP8  - Key 7  (white)
-  GP9  - Start
-  GP10 - Select
-
-Photointerrupter powered from 3.3V.
+Hardware (RP2040 Pico non-W, 50 Pulses per rev, 3.3V photointerrupter):
+  GP0/GP1 - Encoder A/B (PCB 1/4, flippable via invert_turntable, PCB 2/5 3.3V via 250Ω, PCB 3 GND)
+  GP2-GP8 - Keys 1-7 (red/yellow/dk blue/purple/pink/orange/brown)
+  GP9     - Start (white)  GP10 - Select (light blue)  GND black+gray  VCC green NC
+  Buttons active-LOW to GND, internal Pull.UP. Photointerrupter powered from 3.3V.
 """
 
 import board
@@ -35,7 +26,6 @@ CONFIG = {
     "invert_turntable": False,
     "debounce_ms": 5,
     "speedy_math": False,
-    "scratch_smoothing": True,
     "digital_scratch": False,
     "digital_scratch_suppress_analog": False,
     "digital_scratch_timeout_ms": 80
@@ -76,12 +66,7 @@ try:
     SPEEDY_MATH = bool(CONFIG["speedy_math"])
 except Exception:
     SPEEDY_MATH = False
-print(f"Speedy math (per-rev 200->256): {SPEEDY_MATH}")
-try:
-    SCRATCH_SMOOTHING = bool(CONFIG["scratch_smoothing"])
-except Exception:
-    SCRATCH_SMOOTHING = True
-print(f"Scratch smoothing (1 step/ms): {SCRATCH_SMOOTHING}")
+print(f"Speedy math (per-rev 50->256 5.12): {SPEEDY_MATH}")
 try:
     DIGITAL_SCRATCH = bool(CONFIG["digital_scratch"])
 except Exception:
@@ -105,75 +90,34 @@ else:
 # Encoder Setup
 # -----------------------------------------------
 
-# rotaryio does 4x decoding. JKOC is 50 Pulses per rev (50 holes).
-# pocket-iidx uses 24 PPR ->96 Pulses. No divisor arg on RP2040 build.
+# rotaryio does 4x decoding. JKOC 50 Pulses per rev. No divisor arg on RP2040.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
-# per-rev speedy math: 50 Pulses per rev ->256 steps ->5.12/tick (1:1 physical)
+# per-rev speedy math: 50 Pulses ->256 steps ->5.12/tick (1:1 physical)
 ENC_PULSE = 50
 PER_REV_SCALE = 256.0 / ENC_PULSE  # 5.12
-
-# Smoothing state for scaled mode only (raw_axis_mode false)
-# When speedy_math true -> per-rev correct cur/200*256 with smoothing; else raw*scale 1:1
-if not RAW_AXIS_MODE:
-    if SPEEDY_MATH:
-        _disp_init_scale = PER_REV_SCALE * AXIS_SCALE
-    elif SCRATCH_SMOOTHING:
-        _disp_init_scale = AXIS_SCALE
-    else:
-        _disp_init_scale = AXIS_SCALE
-else:
-    _disp_init_scale = 1.0
-_disp_pos = float(_encoder.position * INVERT_TURNTABLE * _disp_init_scale)
 
 _AXIS_SCALE_INT = int(AXIS_SCALE) if AXIS_SCALE == int(AXIS_SCALE) else None
 
 def get_axis(now=None):
-    global _disp_pos
-    # Analog suppress: hold center when digital mode wants exclusive POV
+    # Analog suppress: hold center when digital wants exclusive POV
     if DIGITAL_SCRATCH and DIGITAL_SUPPRESS_ANALOG:
         return 127
-    # Local bind for speed (avoids global lookup in hot loop)
     enc = _encoder
     inv = INVERT_TURNTABLE
     raw_pos = enc.position * inv
 
     if RAW_AXIS_MODE:
-        # Zero precision loss, instant 8-bit wrap - no smoothing, int only
         return raw_pos & 0xFF
     else:
-        # Use int when scale is integer to avoid float
+        # Classic raw*scale or per-rev 50->256 when speedy_math
         if SPEEDY_MATH:
-            # per-rev 50->256: keep float for 5.12
             target = raw_pos * PER_REV_SCALE * AXIS_SCALE
         elif _AXIS_SCALE_INT is not None:
             target = raw_pos * _AXIS_SCALE_INT
         else:
             target = raw_pos * AXIS_SCALE
-        if not SCRATCH_SMOOTHING:
-            # No smoothing - instant jump, keep disp in sync for next smooth enable
-            _disp_pos = float(target)
-            return int(target) & 0xFF
-        # Smoothing: 1 step/ms to hit every 1/255 when scale>1
-        diff = target - _disp_pos
-        # abs(diff) micro-opt: manual
-        if diff < 0:
-            diff_neg = -diff
-            if diff_neg < 0.5:
-                _disp_pos = target
-            elif diff < -1.0:
-                _disp_pos -= 1.0
-            else:
-                _disp_pos = target
-        else:
-            if diff < 0.5:
-                _disp_pos = target
-            elif diff > 1.0:
-                _disp_pos += 1.0
-            else:
-                _disp_pos = target
-
-        return int(_disp_pos) & 0xFF
+        return int(target) & 0xFF
 
 # Digital scratch POV state (hat 0=up, 4=down, 8=neutral)
 _HAT_NEUTRAL = 8
