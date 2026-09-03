@@ -33,9 +33,9 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 | PCB pin | Function | To Pico |
 |---|---|---|
 | 1 | Encoder Ch (A/B) | `GP1` (with 4 = `GP0`, order flippable via `invert_turntable`) |
-| 4 | Encoder Ch (B/A) | `GP0` (with 1 = `GP1`) |
-| 3 | GND | `GND` |
 | 2 | 3.3V via 250Ω | `3.3V` via 250Ω resistor |
+| 3 | GND | `GND` |
+| 4 | Encoder Ch (B/A) | `GP0` (with 1 = `GP1`) |
 | 5 | 3.3V via 250Ω | `3.3V` via 250Ω resistor (shared with pin 2) |
 
 ## Install
