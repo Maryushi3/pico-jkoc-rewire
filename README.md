@@ -12,31 +12,31 @@ CircuitPython firmware for a hand-rewired Konami JKOC (PS2) on a **RP2040 Pico n
 
 ## Wiring (hand-rewired JKOC -> Pico)
 
-| Function | JKOC wire | Pico |
+| JKOC wire | Pico | Function |
 |---|---|---|
-| Key 1 (white) | red | `GP2` |
-| Key 2 (black) | yellow | `GP3` |
-| Key 3 (white) | dark blue | `GP4` |
-| Key 4 (black) | purple | `GP5` |
-| Key 5 (white) | pink | `GP6` |
-| Key 6 (black) | orange | `GP7` |
-| Key 7 (white) | brown | `GP8` |
-| Start | white | `GP9` |
-| Select | light blue | `GP10` |
-| Ground (common) | black + gray | `GND` |
-| VCC | green | **NC** |
+| red | `GP2` | Key 1 (white) |
+| yellow | `GP3` | Key 2 (black) |
+| dark blue | `GP4` | Key 3 (white) |
+| purple | `GP5` | Key 4 (black) |
+| pink | `GP6` | Key 5 (white) |
+| orange | `GP7` | Key 6 (black) |
+| brown | `GP8` | Key 7 (white) |
+| white | `GP9` | Start |
+| light blue | `GP10` | Select |
+| black + gray | `GND` | Ground (common) |
+| green | **NC** | VCC |
 
 > **Note:** JKOC photointerrupter is powered from `3.3V`.
 
 ### Photointerrupter PCB (pins labeled on PCB)
 
-| PCB pin | Function | To Pico |
+| PCB pin | To Pico | Function |
 |---|---|---|
-| 1 | Encoder Ch (A/B) | `GP1` (with 4 = `GP0`, order flippable via `invert_turntable`) |
-| 2 | 3.3V via 250Ω | `3.3V` via 250Ω resistor |
-| 3 | GND | `GND` |
-| 4 | Encoder Ch (B/A) | `GP0` (with 1 = `GP1`) |
-| 5 | 3.3V via 250Ω | `3.3V` via 250Ω resistor (shared with pin 2) |
+| 1 | `GP1` (with 4 = `GP0`, order flippable via `invert_turntable`) | Encoder Ch (A/B) |
+| 2 | `3.3V` via 250Ω resistor | 3.3V via 250Ω |
+| 3 | `GND` | GND |
+| 4 | `GP0` (with 1 = `GP1`) | Encoder Ch (B/A) |
+| 5 | `3.3V` via 250Ω resistor (shared with pin 2) | 3.3V via 250Ω |
 
 ## Install
 
