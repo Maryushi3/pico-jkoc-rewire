@@ -331,11 +331,9 @@ for device in usb_hid.devices:
 if gamepad is None:
     raise RuntimeError("IIDX HID gamepad not found - check boot.py and fully power cycle.")
 
-_report_struct = struct.Struct("BBBB")
 def send_report(axis, key_byte, extra_byte, hat=_HAT_NEUTRAL):
-    # Direct 4-byte report (boot.py 4), no fallback needed - saves try/except on hot path
     try:
-        gamepad.send_report(_report_struct.pack(axis, key_byte, extra_byte, hat & 0x0F))
+        gamepad.send_report(struct.pack("BBBB", axis, key_byte, extra_byte, hat & 0x0F))
     except OSError:
         # PC not polling
         pass
