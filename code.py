@@ -170,43 +170,145 @@ for idx, btn in enumerate(_buttons):
     _stable[idx] = pressed
     _last_change[idx] = time.monotonic()
 
+# Double/triple tap state for Start (E2) / Select (E1) -> E3/E4 (CrazyRed style)
+# Only Start/Select are used for hotkeys; keys/TT remain free for settings.
+_DOUBLE_WINDOW = 0.30  # seconds between taps to count as double/triple
+_select_prev = _stable[8]
+_start_prev = _stable[7]
+_select_last_press = 0.0
+_start_last_press = 0.0
+_select_taps = 0
+_start_taps = 0
+_select_double = False
+_select_triple = False
+_start_double = False
+_start_triple = False
+
 def read_buttons_debounced(now):
-    """Return (key_byte, extra_byte) after per-button debounce.
+    """Return (key_byte, extra_byte) after per-button debounce + double/triple.
+    extra_byte bits: 0=Start/E2, 1=Select/E1, 2=E3, 3=E4
+    Single Select -> E1, double -> E3 (no E1), triple -> E1+E3
+    Single Start  -> E2, double -> E4 (no E2), triple -> E2+E4
     Turntable is NOT debounced - handled separately for latency.
     If DEBOUNCE_SEC==0 this is zero-latency pass-through.
     """
+    global _select_prev, _start_prev, _select_last_press, _start_last_press
+    global _select_taps, _start_taps, _select_double, _select_triple, _start_double, _start_triple
+
     if DEBOUNCE_SEC == 0:
-        # Fast path: no timing checks
+        # Fast path: no timing checks, but still need stable for double logic -> use raw directly
+        # Build stable from raw for this path
+        _stable[7] = not _buttons[7].value
+        _stable[8] = not _buttons[8].value
         key_byte = 0
         for i in range(7):
             if not _buttons[i].value:
                 key_byte |= (1 << i)
-        extra_byte = 0
-        if not _buttons[7].value:
-            extra_byte |= 0x01
-        if not _buttons[8].value:
-            extra_byte |= 0x02
-        return key_byte, extra_byte
+        base_start = _stable[7]
+        base_select = _stable[8]
+    else:
+        # Debounced path
+        for i, b in enumerate(_buttons):
+            raw_pressed = not b.value
+            if raw_pressed != _last_raw[i]:
+                _last_raw[i] = raw_pressed
+                _last_change[i] = now
+            # Only promote to stable after signal held for debounce window
+            if (now - _last_change[i]) >= DEBOUNCE_SEC:
+                _stable[i] = _last_raw[i]
 
-    # Debounced path
-    for i, b in enumerate(_buttons):
-        raw_pressed = not b.value
-        if raw_pressed != _last_raw[i]:
-            _last_raw[i] = raw_pressed
-            _last_change[i] = now
-        # Only promote to stable after signal held for debounce window
-        if (now - _last_change[i]) >= DEBOUNCE_SEC:
-            _stable[i] = _last_raw[i]
+        key_byte = 0
+        for i in range(7):
+            if _stable[i]:
+                key_byte |= (1 << i)
+        base_start = _stable[7]
+        base_select = _stable[8]
 
-    key_byte = 0
-    for i in range(7):
-        if _stable[i]:
-            key_byte |= (1 << i)
+    # --- double/triple detection for Select (E1) ---
+    if base_select and not _select_prev:
+        # press edge
+        if (now - _select_last_press) < _DOUBLE_WINDOW and _select_taps > 0:
+            _select_taps += 1
+            if _select_taps == 2:
+                _select_double = True
+                _select_triple = False
+            elif _select_taps >= 3:
+                _select_triple = True
+                _select_double = True
+        else:
+            _select_taps = 1
+            _select_double = False
+            _select_triple = False
+        _select_last_press = now
+    elif not base_select and _select_prev:
+        # release edge - keep taps for window
+        pass
+    # clear after window expired and button not held
+    if not base_select and _select_taps > 0 and (now - _select_last_press) >= _DOUBLE_WINDOW:
+        # if we were in double/triple, keep it until next press? Clear to single
+        if not _select_double and not _select_triple:
+            _select_taps = 0
+        elif _select_triple:
+            # after triple window, reset
+            _select_taps = 0
+            _select_double = False
+            _select_triple = False
+        elif _select_double:
+            # double stays until next press or timeout - clear after timeout
+            _select_taps = 0
+            _select_double = False
+
+    # --- double/triple detection for Start (E2) ---
+    if base_start and not _start_prev:
+        if (now - _start_last_press) < _DOUBLE_WINDOW and _start_taps > 0:
+            _start_taps += 1
+            if _start_taps == 2:
+                _start_double = True
+                _start_triple = False
+            elif _start_taps >= 3:
+                _start_triple = True
+                _start_double = True
+        else:
+            _start_taps = 1
+            _start_double = False
+            _start_triple = False
+        _start_last_press = now
+    elif not base_start and _start_prev:
+        pass
+    if not base_start and _start_taps > 0 and (now - _start_last_press) >= _DOUBLE_WINDOW:
+        if not _start_double and not _start_triple:
+            _start_taps = 0
+        elif _start_triple:
+            _start_taps = 0
+            _start_double = False
+            _start_triple = False
+        elif _start_double:
+            _start_taps = 0
+            _start_double = False
+
+    _select_prev = base_select
+    _start_prev = base_start
+
+    # Build extra_byte with E1-E4 mapping: bit0=Start/E2, bit1=Select/E1, bit2=E3, bit3=E4
+    # Only emit when base is held; double/triple are modifiers for that hold
     extra_byte = 0
-    if _stable[7]:
-        extra_byte |= 0x01
-    if _stable[8]:
-        extra_byte |= 0x02
+    if base_select:
+        if _select_triple:
+            extra_byte |= 0x02  # E1
+            extra_byte |= 0x04  # E3
+        elif _select_double:
+            extra_byte |= 0x04  # E3 only
+        else:
+            extra_byte |= 0x02  # E1
+    if base_start:
+        if _start_triple:
+            extra_byte |= 0x01  # E2
+            extra_byte |= 0x08  # E4
+        elif _start_double:
+            extra_byte |= 0x08  # E4 only
+        else:
+            extra_byte |= 0x01  # E2
+
     return key_byte, extra_byte
 
 # -----------------------------------------------

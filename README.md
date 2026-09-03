@@ -69,7 +69,7 @@ Current disk state: `raw false` + `scale 5` `speedy off` (matches `5` ticks/scro
   ```
   or `raw false` `scale 1.0` `speedy false` same.
 
-* **Rotation:Output (physical) `1:1` (`1 full spin = 256 steps = wraps to same 0`)** - per-rev correct `50 Pulses ->256` `code.py:117`:
+* **Rotation:Output (physical) `1:1` (`1 full spin = 256 steps = wraps to same 0`)** - per-rev correct `50 Pulses ->256`:
   ```json
   { "raw_axis_mode": false, "axis_scale": 1.0, "speedy_math": true}
   ```
@@ -85,11 +85,11 @@ Current disk state: `raw false` + `scale 5` `speedy off` (matches `5` ticks/scro
 
 ## todos:
 
-- [ ] key-selectable modes on bootup
 - [ ] LED notifications (WS28xx)
-- [ ] additional button hotkeys for more virtual buttons
+- [ ] additional button hotkeys for more virtual buttons (double/triple Start/Select done)
 
 ## Credits
 
 * `speedy_math` inspired by [speedypotato/Pico-Game-Controller `pocket-iidx`](https://github.com/speedypotato/Pico-Game-Controller/tree/release/pocket-iidx)
+* Double/triple press `E1-E4` inspired by [CrazyRedMachine/BEMANI_PSX_Adapter](https://github.com/CrazyRedMachine/BEMANI_PSX_Adapter)
 * sanity saved by various LLMs
