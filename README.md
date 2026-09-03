@@ -1,8 +1,10 @@
-# pico-jkoc-rewire - Pi Pico IIDX controller (JKOC)
+# Pico JKOC rewire
 
 CircuitPython firmware for a **rewired** JKOC (Konami IIDX official controller). Designed for **Raspberry Pi Pico** (or any other RP2040 board). Tested with **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV. Configurable via a json file.
 
 ## Wiring (hand-rewired JKOC -> Pico)
+
+I just let the Pi Pico hang around along the edge of the case under the turntable.
 
 ### Photointerrupter encoder PCB (pins labeled on PCB)
 
@@ -78,6 +80,12 @@ Current disk state: `raw false` + `scale 5` `speedy off` (matches `5` ticks/scro
 * set analog ticks per scroll in Music Select to 5 (match `axis_scale`)
 * if mapping for digital scratch, suppress the analog axis in config for mapping
 * map buttons and scratch as usual
+
+## todos:
+
+- [ ] key-selectable modes on bootup
+- [ ] LED notifications (WS28xx)
+- [ ] additional button hotkeys for more virtual buttons
 
 ## Credits
 
