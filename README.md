@@ -1,4 +1,4 @@
-# pikoc - Pi Pico IIDX controller (JKOC)
+# pico-jkoc-rewire - Pi Pico IIDX controller (JKOC)
 
 CircuitPython firmware for a **rewired** JKOC (Konami IIDX official controller). Designed for **Raspberry Pi Pico** (or any other RP2040 board). Tested with **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV. Configurable via a json file.
 
