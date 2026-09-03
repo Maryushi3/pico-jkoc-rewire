@@ -2,6 +2,8 @@
 
 CircuitPython firmware for a **rewired** JKOC (Konami IIDX official controller). Designed for **Raspberry Pi Pico** (or any other RP2040 board). Tested with **beatoraja**. Keys + turntable -> single HID gamepad with optional digital scratch POV. Configurable via a json file.
 
+Why CircuitPython and not just speedy's code or something else? I wanted to quickly test just the encoder and have something immediately easily readable. It then spiralled into full controller code, because what's wrong with adding some buttons, right? With code so simple, Python overhead doesn't impact the performance and is easy to modify and iterate on. That's exactly what I needed.
+
 ## Wiring (hand-rewired JKOC -> Pico)
 
 I just let the Pi Pico hang around along the edge of the case under the turntable.
