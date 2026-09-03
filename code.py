@@ -1,11 +1,5 @@
 """
-code.py - IIDX Controller for JKOC on Pi Pico (beatoraja)
-
-Hardware (RP2040 Pico non-W, 50 Pulses per rev, 3.3V photointerrupter):
-  GP0/GP1 - Encoder A/B (PCB 1/4, flippable via invert_turntable, PCB 2/5 3.3V via 250Ω, PCB 3 GND)
-  GP2-GP8 - Keys 1-7 (red/yellow/dk blue/purple/pink/orange/brown)
-  GP9     - Start (white)  GP10 - Select (light blue)  GND black+gray  VCC green NC
-  Buttons active-LOW to GND, internal Pull.UP. Photointerrupter powered from 3.3V.
+code.py - IIDX Controller for JKOC on Pi Pico
 """
 
 import board
