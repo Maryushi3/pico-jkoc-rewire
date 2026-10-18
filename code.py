@@ -21,6 +21,9 @@ _TICKS_MASK = (1 << 29) - 1  # elapsed = (now - then) & _TICKS_MASK
 # -----------------------------------------------
 
 CONFIG = {
+    "encoder": "magnetic",
+    "as5600_steps_per_rev": 576,
+    "as5600_hysteresis": 2,
     "raw_axis_mode": True,
     "axis_scale": 1.0,
     "invert_turntable": False,
@@ -89,29 +92,151 @@ if DIGITAL_SCRATCH:
     print(f"Digital scratch: POV hat up/down, timeout {_digital_timeout_ms}ms, suppress_analog={DIGITAL_SUPPRESS_ANALOG}")
 else:
     print("Digital scratch: disabled (POV neutral)")
+# Explicit choice, no automatic fallback: "magnetic" = AS5600, "optical" = JKOC photointerrupter
+ENCODER = str(CONFIG["encoder"]).lower()
+if ENCODER not in ("magnetic", "optical"):
+    print(f'encoder "{ENCODER}" unknown (use "magnetic" or "optical"), using "magnetic"')
+    ENCODER = "magnetic"
+USE_AS5600 = ENCODER == "magnetic"
+try:
+    # 576 = DJ-DAO RED-LMS, 2x arcade (288); 8-bit axis wraps every ~0.44 turn
+    AS5600_STEPS_PER_REV = int(CONFIG["as5600_steps_per_rev"])
+    AS5600_STEPS_PER_REV = max(16, min(4096, AS5600_STEPS_PER_REV))
+except Exception:
+    AS5600_STEPS_PER_REV = 576
+try:
+    _as5600_hyst = int(CONFIG["as5600_hysteresis"])
+    _as5600_hyst = max(0, min(64, _as5600_hyst))
+except Exception:
+    _as5600_hyst = 2
 
 # -----------------------------------------------
-# Encoder Setup
+# AS5600 Magnetic Encoder (I2C, 12-bit = 4096 counts/rev)
 # -----------------------------------------------
 
-# rotaryio default divisor=4: 1 count per full quadrature cycle -> JKOC 50 counts/rev.
-_encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
+_AS5600_ADDR = 0x36
+_AS5600_REG_CONF = 0x07       # 0x07-0x08, volatile (not burned)
+_AS5600_REG_STATUS = 0x0B     # bit5 MD magnet detected, bit4 ML too weak, bit3 MH too strong
+_AS5600_REG_RAW_ANGLE = 0x0C  # 0x0C-0x0D, unfiltered by ZPOS/MPOS/hysteresis
+_AS5600_REG_AGC = 0x1A
+# CONF high byte: SF bits 1:0 (11 = 2x, 0.286ms step response vs 2.2ms default 16x),
+# FTH bits 4:2 (000 = slow filter only). Lowest latency, extra noise eaten by hysteresis.
+_AS5600_SF = 0b11
+_AS5600_FTH = 0b000
+
+_i2c = None
+_as5600_ok = False
+if USE_AS5600:
+    try:
+        import busio
+        _i2c = busio.I2C(board.GP13, board.GP12, frequency=400000)  # SCL, SDA
+        while not _i2c.try_lock():
+            pass
+        _as_buf1 = bytearray(1)
+        _as_buf2 = bytearray(2)
+        _i2c.writeto_then_readfrom(_AS5600_ADDR, bytes([_AS5600_REG_STATUS]), _as_buf1)
+        _status = _as_buf1[0]
+        if not _status & 0x20:
+            raise RuntimeError("no magnet detected (STATUS MD=0)")
+        _i2c.writeto_then_readfrom(_AS5600_ADDR, bytes([_AS5600_REG_AGC]), _as_buf1)
+        print(f"AS5600: magnet ok, AGC={_as_buf1[0]} (mid-range is best; 0-128 at 3.3V)")
+        if _status & 0x10:
+            print("AS5600: WARNING magnet too weak (move closer)")
+        if _status & 0x08:
+            print("AS5600: WARNING magnet too strong (move further)")
+        _i2c.writeto_then_readfrom(_AS5600_ADDR, bytes([_AS5600_REG_CONF]), _as_buf2)
+        _conf_hi = (_as_buf2[0] & 0xE0) | (_AS5600_FTH << 2) | _AS5600_SF
+        _i2c.writeto(_AS5600_ADDR, bytes([_AS5600_REG_CONF, _conf_hi, _as_buf2[1]]))
+        _i2c.writeto_then_readfrom(_AS5600_ADDR, bytes([_AS5600_REG_RAW_ANGLE]), _as_buf2)
+        _as_boot_raw = ((_as_buf2[0] & 0x0F) << 8) | _as_buf2[1]
+        _as5600_ok = True
+    except Exception as e:
+        print("ERROR: AS5600 init failed, turntable DISABLED (buttons still work):", e)
+        print('Fix wiring/magnet, or set "encoder": "optical" in config.json for the photointerrupter.')
+        if _i2c is not None:
+            _i2c.deinit()
+            _i2c = None
+
+if _as5600_ok:
+    # Position is tracked in output steps (AS5600_STEPS_PER_REV per turn).
+    # Sub-step remainder is kept in units of raw_count * steps_per_rev, so one
+    # step = 4096 units and the math stays integer. A step only registers once
+    # the remainder leaves [-hyst, 4096 + hyst): sensor noise around a step
+    # boundary can't flicker the axis/hat back and forth.
+    _AS_RAW_REG = bytes([_AS5600_REG_RAW_ANGLE])
+    _AS_HYST = _as5600_hyst * AS5600_STEPS_PER_REV
+    _AS_UPPER = 4096 + _AS_HYST
+
+    def _as5600_raw():
+        _i2c.writeto_then_readfrom(_AS5600_ADDR, _AS_RAW_REG, _as_buf2)
+        return ((_as_buf2[0] & 0x0F) << 8) | _as_buf2[1]
+
+    _as_prev_raw = _as_boot_raw
+    _as_steps = 0
+    _as_frac = 2048  # start mid-step, as far from both boundaries as possible
+
+    def read_tt_position():
+        global _as_prev_raw, _as_steps, _as_frac
+        try:
+            raw = _as5600_raw()
+        except OSError:
+            # I2C glitch: hold last position
+            return _as_steps
+        d = (raw - _as_prev_raw) & 0xFFF
+        if d == 0:
+            return _as_steps
+        if d >= 2048:
+            # shortest way around the wrap (needs < half turn per poll)
+            d -= 4096
+        _as_prev_raw = raw
+        x = _as_frac + d * AS5600_STEPS_PER_REV
+        if x >= _AS_UPPER:
+            k = (x - _AS_HYST) >> 12
+        elif x < -_AS_HYST:
+            k = (x + _AS_HYST) >> 12
+        else:
+            _as_frac = x
+            return _as_steps
+        _as_steps += k
+        _as_frac = x - (k << 12)
+        return _as_steps
+
+    print(f"Encoder: magnetic (AS5600), {AS5600_STEPS_PER_REV} steps/rev, hysteresis {_as5600_hyst} counts")
+elif USE_AS5600:
+    # Magnetic selected but unusable: hold the axis still rather than silently
+    # switching to a sensor that wasn't asked for
+    def read_tt_position():
+        return 0
+
+    print("Encoder: magnetic (AS5600) FAILED, turntable disabled")
+else:
+    # rotaryio default divisor=4: 1 count per full quadrature cycle -> JKOC 50 counts/rev.
+    _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
+
+    def read_tt_position():
+        return _encoder.position
+
+    print("Encoder: optical (GP0/GP1)")
+
+# -----------------------------------------------
+# Turntable Axis
+# -----------------------------------------------
 
 # per-rev speedy math: 50 Pulses ->256 steps ->5.12/tick (1:1 physical)
 ENC_PULSE = 50
 PER_REV_SCALE = 256.0 / ENC_PULSE  # 5.12
 
 _AXIS_SCALE_INT = int(AXIS_SCALE) if AXIS_SCALE == int(AXIS_SCALE) else None
+# AS5600 position is already in output steps; raw/scale/speedy are optical-only
+_AXIS_DIRECT = RAW_AXIS_MODE or USE_AS5600
 
-def get_axis():
+def get_axis(pos):
     # Analog suppress: hold center when digital wants exclusive POV
     if DIGITAL_SCRATCH and DIGITAL_SUPPRESS_ANALOG:
         return 127
-    enc = _encoder
-    inv = INVERT_TURNTABLE
-    raw_pos = enc.position * inv
+    raw_pos = pos * INVERT_TURNTABLE
 
-    if RAW_AXIS_MODE:
+    if _AXIS_DIRECT:
         return raw_pos & 0xFF
     else:
         # Classic raw*scale or per-rev 50->256 when speedy_math
@@ -127,15 +252,15 @@ def get_axis():
 _HAT_NEUTRAL = 8
 _HAT_UP = 0
 _HAT_DOWN = 4
-_prev_raw_pov = _encoder.position * INVERT_TURNTABLE
+_prev_raw_pov = read_tt_position() * INVERT_TURNTABLE
 _last_pov_move = _ticks_ms()
 _current_hat = _HAT_NEUTRAL
 
-def get_pov_hat(now):
+def get_pov_hat(pos, now):
     global _prev_raw_pov, _last_pov_move, _current_hat
     if not DIGITAL_SCRATCH:
         return _HAT_NEUTRAL
-    raw_pos = _encoder.position * INVERT_TURNTABLE
+    raw_pos = pos * INVERT_TURNTABLE
     delta = raw_pos - _prev_raw_pov
     if delta != 0:
         # Direction change immediately updates hat
@@ -287,7 +412,7 @@ def send_report(axis, key_byte, extra_byte, hat=_HAT_NEUTRAL):
 # -----------------------------------------------
 
 print("IIDX Controller ready.")
-print(f"Config: raw_axis={RAW_AXIS_MODE} scale={AXIS_SCALE} invert={INVERT_TURNTABLE==-1} debounce={_debounce_ms}ms hat={'digital' if DIGITAL_SCRATCH else 'off'}")
+print(f"Config: encoder={ENCODER}{'' if _as5600_ok or not USE_AS5600 else ' (FAILED)'} raw_axis={RAW_AXIS_MODE} scale={AXIS_SCALE} invert={INVERT_TURNTABLE==-1} debounce={_debounce_ms}ms hat={'digital' if DIGITAL_SCRATCH else 'off'}")
 
 _prev_axis = -1
 _prev_keys = -1
@@ -296,6 +421,7 @@ _prev_hat = -1
 
 # Local binds for main loop hot path
 _now_ms = _ticks_ms
+_read_tt = read_tt_position
 _get_axis = get_axis
 _read_buttons = read_buttons_debounced
 _get_hat = get_pov_hat
@@ -304,9 +430,10 @@ _send = send_report
 while True:
     now = _now_ms()
 
-    axis = _get_axis()
+    pos = _read_tt()
+    axis = _get_axis(pos)
     key_byte, extra = _read_buttons(now)
-    hat = _get_hat(now)
+    hat = _get_hat(pos, now)
 
     if axis != _prev_axis or key_byte != _prev_keys or extra != _prev_extra or hat != _prev_hat:
         _send(axis, key_byte, extra, hat)

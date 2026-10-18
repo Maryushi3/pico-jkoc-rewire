@@ -1,4 +1,7 @@
 {
+  "encoder": "magnetic",
+  "as5600_steps_per_rev": 576,
+  "as5600_hysteresis": 2,
   "raw_axis_mode": false,
   "axis_scale": 5,
   "invert_turntable": false,
