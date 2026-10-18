@@ -9,6 +9,12 @@ import usb_hid
 import struct
 import json
 import time
+import supervisor
+
+# Int ms ticks, wraps at 2**29 (~6.2 days). Float time.monotonic() loses
+# precision after ~1h uptime, which breaks ms-level debounce/tap timing.
+_ticks_ms = supervisor.ticks_ms
+_TICKS_MASK = (1 << 29) - 1  # elapsed = (now - then) & _TICKS_MASK
 
 # -----------------------------------------------
 # Load Configuration from File
@@ -41,9 +47,12 @@ except Exception:
     RAW_AXIS_MODE = True
 try:
     AXIS_SCALE = float(CONFIG["axis_scale"])
-    if AXIS_SCALE <= 0 or AXIS_SCALE > 5.0:
-        print(f"axis_scale {AXIS_SCALE} out of range, clamping to 1.0")
+    if AXIS_SCALE <= 0:
+        print(f"axis_scale {AXIS_SCALE} out of range, using 1.0")
         AXIS_SCALE = 1.0
+    elif AXIS_SCALE > 5.0:
+        print(f"axis_scale {AXIS_SCALE} out of range, clamping to 5.0")
+        AXIS_SCALE = 5.0
 except Exception:
     AXIS_SCALE = 1.0
 INVERT_TURNTABLE = -1 if CONFIG["invert_turntable"] else 1
@@ -52,8 +61,8 @@ try:
     _debounce_ms = max(0, min(50, _debounce_ms))
 except Exception:
     _debounce_ms = 5
-DEBOUNCE_SEC = _debounce_ms / 1000.0
-if DEBOUNCE_SEC == 0:
+DEBOUNCE_MS = _debounce_ms
+if DEBOUNCE_MS == 0:
     print("Debounce disabled (0 ms) - membranes may chatter")
 else:
     print(f"Debounce: {_debounce_ms} ms")
@@ -75,7 +84,7 @@ try:
     _digital_timeout_ms = max(20, min(500, _digital_timeout_ms))
 except Exception:
     _digital_timeout_ms = 80
-DIGITAL_TIMEOUT_SEC = _digital_timeout_ms / 1000.0
+DIGITAL_TIMEOUT_MS = _digital_timeout_ms
 if DIGITAL_SCRATCH:
     print(f"Digital scratch: POV hat up/down, timeout {_digital_timeout_ms}ms, suppress_analog={DIGITAL_SUPPRESS_ANALOG}")
 else:
@@ -85,7 +94,7 @@ else:
 # Encoder Setup
 # -----------------------------------------------
 
-# rotaryio does 4x decoding. JKOC 50 Pulses per rev. No divisor arg on RP2040.
+# rotaryio default divisor=4: 1 count per full quadrature cycle -> JKOC 50 counts/rev.
 _encoder = rotaryio.IncrementalEncoder(board.GP0, board.GP1)
 
 # per-rev speedy math: 50 Pulses ->256 steps ->5.12/tick (1:1 physical)
@@ -94,7 +103,7 @@ PER_REV_SCALE = 256.0 / ENC_PULSE  # 5.12
 
 _AXIS_SCALE_INT = int(AXIS_SCALE) if AXIS_SCALE == int(AXIS_SCALE) else None
 
-def get_axis(now=None):
+def get_axis():
     # Analog suppress: hold center when digital wants exclusive POV
     if DIGITAL_SCRATCH and DIGITAL_SUPPRESS_ANALOG:
         return 127
@@ -119,7 +128,7 @@ _HAT_NEUTRAL = 8
 _HAT_UP = 0
 _HAT_DOWN = 4
 _prev_raw_pov = _encoder.position * INVERT_TURNTABLE
-_last_pov_move = time.monotonic()
+_last_pov_move = _ticks_ms()
 _current_hat = _HAT_NEUTRAL
 
 def get_pov_hat(now):
@@ -135,10 +144,8 @@ def get_pov_hat(now):
         _last_pov_move = now
         return _current_hat
     # No movement - check timeout for neutral
-    if (now - _last_pov_move) >= DIGITAL_TIMEOUT_SEC:
-        if _current_hat != _HAT_NEUTRAL:
-            _current_hat = _HAT_NEUTRAL
-        return _HAT_NEUTRAL
+    if ((now - _last_pov_move) & _TICKS_MASK) >= DIGITAL_TIMEOUT_MS:
+        _current_hat = _HAT_NEUTRAL
     return _current_hat
 
 # -----------------------------------------------
@@ -162,14 +169,14 @@ _NUM_BUTTONS = len(_buttons)
 # Per-button debounce state: raw vs stable (pressed=True)
 _last_raw = [False] * _NUM_BUTTONS
 _stable = [False] * _NUM_BUTTONS
-_last_change = [0.0] * _NUM_BUTTONS
+_last_change = [0] * _NUM_BUTTONS
 
 # Seed initial state from actual pins to avoid false edge on boot
 for idx, btn in enumerate(_buttons):
     pressed = not btn.value
     _last_raw[idx] = pressed
     _stable[idx] = pressed
-    _last_change[idx] = time.monotonic()
+    _last_change[idx] = _ticks_ms()
 
 # Double/triple tap state for Start (E2) / Select (E1) -> E3/E4 (CrazyRed style)
 # Only Start/Select are used for hotkeys; keys/TT remain free for settings.
@@ -178,18 +185,42 @@ try:
     _double_window_ms = max(50, min(1000, _double_window_ms))
 except Exception:
     _double_window_ms = 300
-_DOUBLE_WINDOW = _double_window_ms / 1000.0
+_DOUBLE_WINDOW_MS = _double_window_ms
 print(f"Double tap window: {_double_window_ms}ms")
-_select_prev = _stable[8]
-_start_prev = _stable[7]
-_select_last_press = 0.0
-_start_last_press = 0.0
-_select_taps = 0
-_start_taps = 0
-_select_double = False
-_select_triple = False
-_start_double = False
-_start_triple = False
+
+class _TapCounter:
+    """Counts presses landing within the double tap window of the previous one."""
+
+    def __init__(self, pressed):
+        self.prev = pressed
+        self.last_press = 0
+        self.taps = 0
+
+    def update(self, pressed, now):
+        """Return 0 = released, 1 = single, 2 = double, 3 = triple (while held)."""
+        elapsed = (now - self.last_press) & _TICKS_MASK
+        if pressed and not self.prev:
+            # press edge: chain onto previous press if inside window
+            if self.taps > 0 and elapsed < _DOUBLE_WINDOW_MS:
+                if self.taps < 3:
+                    self.taps += 1
+            else:
+                self.taps = 1
+            self.last_press = now
+        elif not pressed and self.taps > 0 and elapsed >= _DOUBLE_WINDOW_MS:
+            # window expired while released: next press starts fresh
+            self.taps = 0
+        self.prev = pressed
+        if not pressed:
+            return 0
+        return self.taps if self.taps > 1 else 1
+
+_select_tap = _TapCounter(_stable[8])
+_start_tap = _TapCounter(_stable[7])
+
+# extra_byte bits per tap level: bit0=Start/E2, bit1=Select/E1, bit2=E3, bit3=E4
+_SELECT_BITS = (0, 0x02, 0x04, 0x06)  # -, E1, E3, E1+E3
+_START_BITS = (0, 0x01, 0x08, 0x09)   # -, E2, E4, E2+E4
 
 def read_buttons_debounced(now):
     """Return (key_byte, extra_byte) after per-button debounce + double/triple.
@@ -197,22 +228,16 @@ def read_buttons_debounced(now):
     Single Select -> E1, double -> E3 (no E1), triple -> E1+E3
     Single Start  -> E2, double -> E4 (no E2), triple -> E2+E4
     Turntable is NOT debounced - handled separately for latency.
-    If DEBOUNCE_SEC==0 this is zero-latency pass-through.
+    If DEBOUNCE_MS==0 this is zero-latency pass-through.
     """
-    global _select_prev, _start_prev, _select_last_press, _start_last_press
-    global _select_taps, _start_taps, _select_double, _select_triple, _start_double, _start_triple
-
-    if DEBOUNCE_SEC == 0:
-        # Fast path: no timing checks, but still need stable for double logic -> use raw directly
-        # Build stable from raw for this path
-        _stable[7] = not _buttons[7].value
-        _stable[8] = not _buttons[8].value
+    if DEBOUNCE_MS == 0:
+        # Fast path: no timing checks, raw pins straight to key/tap state
         key_byte = 0
         for i in range(7):
             if not _buttons[i].value:
                 key_byte |= (1 << i)
-        base_start = _stable[7]
-        base_select = _stable[8]
+        base_start = not _buttons[7].value
+        base_select = not _buttons[8].value
     else:
         # Debounced path
         for i, b in enumerate(_buttons):
@@ -221,7 +246,7 @@ def read_buttons_debounced(now):
                 _last_raw[i] = raw_pressed
                 _last_change[i] = now
             # Only promote to stable after signal held for debounce window
-            if (now - _last_change[i]) >= DEBOUNCE_SEC:
+            if ((now - _last_change[i]) & _TICKS_MASK) >= DEBOUNCE_MS:
                 _stable[i] = _last_raw[i]
 
         key_byte = 0
@@ -231,90 +256,9 @@ def read_buttons_debounced(now):
         base_start = _stable[7]
         base_select = _stable[8]
 
-    # --- double/triple detection for Select (E1) ---
-    if base_select and not _select_prev:
-        # press edge
-        if (now - _select_last_press) < _DOUBLE_WINDOW and _select_taps > 0:
-            _select_taps += 1
-            if _select_taps == 2:
-                _select_double = True
-                _select_triple = False
-            elif _select_taps >= 3:
-                _select_triple = True
-                _select_double = True
-        else:
-            _select_taps = 1
-            _select_double = False
-            _select_triple = False
-        _select_last_press = now
-    elif not base_select and _select_prev:
-        # release edge - keep taps for window
-        pass
-    # clear after window expired and button not held
-    if not base_select and _select_taps > 0 and (now - _select_last_press) >= _DOUBLE_WINDOW:
-        # if we were in double/triple, keep it until next press? Clear to single
-        if not _select_double and not _select_triple:
-            _select_taps = 0
-        elif _select_triple:
-            # after triple window, reset
-            _select_taps = 0
-            _select_double = False
-            _select_triple = False
-        elif _select_double:
-            # double stays until next press or timeout - clear after timeout
-            _select_taps = 0
-            _select_double = False
-
-    # --- double/triple detection for Start (E2) ---
-    if base_start and not _start_prev:
-        if (now - _start_last_press) < _DOUBLE_WINDOW and _start_taps > 0:
-            _start_taps += 1
-            if _start_taps == 2:
-                _start_double = True
-                _start_triple = False
-            elif _start_taps >= 3:
-                _start_triple = True
-                _start_double = True
-        else:
-            _start_taps = 1
-            _start_double = False
-            _start_triple = False
-        _start_last_press = now
-    elif not base_start and _start_prev:
-        pass
-    if not base_start and _start_taps > 0 and (now - _start_last_press) >= _DOUBLE_WINDOW:
-        if not _start_double and not _start_triple:
-            _start_taps = 0
-        elif _start_triple:
-            _start_taps = 0
-            _start_double = False
-            _start_triple = False
-        elif _start_double:
-            _start_taps = 0
-            _start_double = False
-
-    _select_prev = base_select
-    _start_prev = base_start
-
-    # Build extra_byte with E1-E4 mapping: bit0=Start/E2, bit1=Select/E1, bit2=E3, bit3=E4
     # Only emit when base is held; double/triple are modifiers for that hold
-    extra_byte = 0
-    if base_select:
-        if _select_triple:
-            extra_byte |= 0x02  # E1
-            extra_byte |= 0x04  # E3
-        elif _select_double:
-            extra_byte |= 0x04  # E3 only
-        else:
-            extra_byte |= 0x02  # E1
-    if base_start:
-        if _start_triple:
-            extra_byte |= 0x01  # E2
-            extra_byte |= 0x08  # E4
-        elif _start_double:
-            extra_byte |= 0x08  # E4 only
-        else:
-            extra_byte |= 0x01  # E2
+    extra_byte = (_SELECT_BITS[_select_tap.update(base_select, now)]
+                  | _START_BITS[_start_tap.update(base_start, now)])
 
     return key_byte, extra_byte
 
@@ -351,16 +295,16 @@ _prev_extra = -1
 _prev_hat = -1
 
 # Local binds for main loop hot path
-_monotonic = time.monotonic
+_now_ms = _ticks_ms
 _get_axis = get_axis
 _read_buttons = read_buttons_debounced
 _get_hat = get_pov_hat
 _send = send_report
 
 while True:
-    now = _monotonic()
+    now = _now_ms()
 
-    axis = _get_axis(now)
+    axis = _get_axis()
     key_byte, extra = _read_buttons(now)
     hat = _get_hat(now)
 

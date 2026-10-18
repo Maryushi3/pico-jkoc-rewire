@@ -51,7 +51,7 @@ IIDX_REPORT_DESCRIPTOR = bytes([
     # -- Start/Select/E3/E4 (bits 0-3) - Select=E1, Start=E2, double->E3/E4 --------
     0x05, 0x09,        #   Usage Page (Button)
     0x19, 0x08,        #   Usage Minimum (Button 8)
-    0x29, 0x0B,        #   Usage Maximum (Button 11) 11=E3 12=E4 but we use 11 for E3/E4 (4 bits)
+    0x29, 0x0B,        #   Usage Maximum (Button 11) 8=Start/E2 9=Select/E1 10=E3 11=E4
     0x15, 0x00,        #   Logical Minimum (0)
     0x25, 0x01,        #   Logical Maximum (1)
     0x75, 0x01,        #   Report Size (1)
